@@ -14,6 +14,7 @@ Muster favors clarity over cleverness, and predictability over automation.
 - Muster is **orchestration**, not persistence logic.
 - Builders perform **idempotent upserts**, never blind inserts.
 - No global state mutation.
+- Do not add explicit `declare(strict_types=1);` headers; keep typed signatures/properties/returns instead.
 - No hidden randomness. All fake data must be seedable and deterministic.
 - WordPress remains the source of truth:
   - `wp_insert_post()`, `wp_update_post()`, `get_posts()`, etc.
