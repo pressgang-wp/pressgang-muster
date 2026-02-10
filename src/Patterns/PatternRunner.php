@@ -2,11 +2,9 @@
 
 namespace PressGang\Muster\Patterns;
 
-use PressGang\Muster\Builders\OptionBuilder;
 use PressGang\Muster\Builders\PostBuilder;
-use PressGang\Muster\Builders\TermBuilder;
-use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Muster;
+use UnexpectedValueException;
 
 /**
  * Coordinates pattern iterations and per-pattern deterministic scope.
@@ -15,7 +13,7 @@ final class PatternRunner
 {
     /**
      * @param Pattern $pattern
-     * @param callable(int, Muster): PostBuilder|TermBuilder|UserBuilder|OptionBuilder $builder
+     * @param callable(int): PostBuilder $builder
      * @param Muster $muster
      * @return void
      */
@@ -23,6 +21,7 @@ final class PatternRunner
     {
         $iterations = $pattern->iterations();
         $seed = $pattern->effectiveSeed();
+        $victuals = $pattern->context()->victualsForSeed($seed);
 
         if ($pattern->context()->dryRun()) {
             $pattern->context()->logger()->info(
@@ -32,12 +31,20 @@ final class PatternRunner
             return;
         }
 
-        for ($i = 1; $i <= $iterations; $i++) {
-            $result = $builder($i, $muster);
+        $muster->beginPatternVictualsScope($victuals);
 
-            if (is_object($result) && method_exists($result, 'save')) {
+        try {
+            for ($i = 1; $i <= $iterations; $i++) {
+                $result = $builder($i);
+
+                if (!$result instanceof PostBuilder) {
+                    throw new UnexpectedValueException('Pattern builder must return PostBuilder for this slice.');
+                }
+
                 $result->save();
             }
+        } finally {
+            $muster->endPatternVictualsScope();
         }
 
         $pattern->context()->logger()->debug(

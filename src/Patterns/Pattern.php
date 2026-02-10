@@ -2,10 +2,7 @@
 
 namespace PressGang\Muster\Patterns;
 
-use PressGang\Muster\Builders\OptionBuilder;
-use PressGang\Muster\Builders\PostBuilder;
-use PressGang\Muster\Builders\TermBuilder;
-use PressGang\Muster\Builders\UserBuilder;
+use LogicException;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
 
@@ -14,13 +11,16 @@ use PressGang\Muster\MusterContext;
  */
 final class Pattern
 {
-    private int $count = 1;
+    private int $count = 0;
+
+    private bool $hasCount = false;
 
     private ?int $seed = null;
 
     public function __construct(
         private string $name,
         private MusterContext $context,
+        private Muster $muster,
         private ?PatternRunner $runner = null,
     ) {
         $this->runner ??= new PatternRunner();
@@ -32,7 +32,12 @@ final class Pattern
      */
     public function count(int $count): self
     {
+        if ($count < 1) {
+            throw new LogicException('Pattern count must be at least 1.');
+        }
+
         $this->count = $count;
+        $this->hasCount = true;
 
         return $this;
     }
@@ -52,20 +57,18 @@ final class Pattern
      * Run the pattern callable.
      *
      * Builder signature:
-     * `callable(int $i, Muster $muster): PostBuilder|TermBuilder|UserBuilder|OptionBuilder`
+     * `callable(int $i): \PressGang\Muster\Builders\PostBuilder`
      *
-     * @param callable(int, Muster): PostBuilder|TermBuilder|UserBuilder|OptionBuilder $builder
+     * @param callable(int): \PressGang\Muster\Builders\PostBuilder $builder
      * @return PatternResult
      */
     public function build(callable $builder): PatternResult
     {
-        $muster = new class($this->context) extends Muster {
-            public function run(): void
-            {
-            }
-        };
+        if (!$this->hasCount) {
+            throw new LogicException('Pattern count must be explicitly set before build().');
+        }
 
-        $this->runner->run($this, $builder, $muster);
+        $this->runner->run($this, $builder, $this->muster);
 
         return new PatternResult($this->name, $this->count, $this->effectiveSeed());
     }

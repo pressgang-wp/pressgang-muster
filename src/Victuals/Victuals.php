@@ -16,7 +16,7 @@ final class Victuals
      */
     public function headline(): string
     {
-        return '';
+        return $this->faker->sentence(6);
     }
 
     /**
@@ -25,7 +25,7 @@ final class Victuals
      */
     public function sentence(int $words = 6): string
     {
-        return '';
+        return $this->faker->sentence($words);
     }
 
     /**
@@ -34,7 +34,7 @@ final class Victuals
      */
     public function paragraphs(int $count = 3): string
     {
-        return '';
+        return implode("\n\n", $this->faker->paragraphs($count));
     }
 
     /**
@@ -145,7 +145,7 @@ final class Victuals
      */
     public function dateBetween(string $from, string $to): \DateTimeInterface
     {
-        return new \DateTimeImmutable();
+        return $this->faker->dateTimeBetween($from, $to);
     }
 
     /**

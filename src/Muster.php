@@ -17,6 +17,8 @@ use PressGang\Muster\Victuals\Victuals;
  */
 abstract class Muster
 {
+    private ?Victuals $patternVictuals = null;
+
     public function __construct(protected MusterContext $context)
     {
     }
@@ -32,23 +34,21 @@ abstract class Muster
      * Start a post builder for a given post type.
      *
      * @param string $postType
-     * @param string|null $title
      * @return PostBuilder
      */
-    public function post(string $postType = 'post', ?string $title = null): PostBuilder
+    public function post(string $postType = 'post'): PostBuilder
     {
-        return new PostBuilder($this->context, $postType, $title);
+        return new PostBuilder($this->context, $postType);
     }
 
     /**
      * Start a page post builder.
      *
-     * @param string|null $title
      * @return PostBuilder
      */
-    public function page(?string $title = null): PostBuilder
+    public function page(): PostBuilder
     {
-        return $this->post('page', $title);
+        return $this->post('page');
     }
 
     /**
@@ -88,10 +88,16 @@ abstract class Muster
     /**
      * Access the Victuals helper for deterministic generated values.
      *
+     * During a pattern run this returns the per-pattern scoped instance.
+     *
      * @return Victuals
      */
     public function victuals(): Victuals
     {
+        if ($this->patternVictuals !== null) {
+            return $this->patternVictuals;
+        }
+
         return $this->context->victuals();
     }
 
@@ -103,13 +109,34 @@ abstract class Muster
      */
     public function pattern(string $name): Pattern
     {
-        return new Pattern($name, $this->context);
+        return new Pattern($name, $this->context, $this);
+    }
+
+    /**
+     * Scope Victuals for a single pattern execution.
+     *
+     * @param Victuals $victuals
+     * @return void
+     */
+    public function beginPatternVictualsScope(Victuals $victuals): void
+    {
+        $this->patternVictuals = $victuals;
+    }
+
+    /**
+     * End the active pattern Victuals scope.
+     *
+     * @return void
+     */
+    public function endPatternVictualsScope(): void
+    {
+        $this->patternVictuals = null;
     }
 
     /**
      * Resolve post-type shorthand calls to `post($postType)`.
      *
-     * Method resolution is guarded by `post_type_exists()` when available.
+     * Method resolution is guarded by `post_type_exists()`.
      *
      * @param string $method
      * @param array<int, mixed> $args
@@ -121,7 +148,13 @@ abstract class Muster
             /** @var string|null $title */
             $title = $args[0] ?? null;
 
-            return $this->post($method, $title);
+            $builder = $this->post($method);
+
+            if ($title !== null) {
+                $builder->title($title);
+            }
+
+            return $builder;
         }
 
         throw new BadMethodCallException(
