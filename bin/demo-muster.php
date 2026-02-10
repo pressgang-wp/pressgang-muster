@@ -1,6 +1,5 @@
 <?php
 
-declare(strict_types=1);
 
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
@@ -18,7 +17,7 @@ if (!function_exists('get_posts')) {
 }
 
 $seed = 1978;
-$postType = 'post';
+$postType = 'event';
 $total = 3;
 
 $slugs = [];
@@ -50,7 +49,7 @@ $muster = new class($context) extends Muster {
             ->count(3)
             ->seed(1978)
             ->build(fn (int $i) =>
-                $this->post('post')
+                $this->post('event')
                     ->title($this->victuals()->headline())
                     ->slug("event-{$i}")
                     ->status('publish')

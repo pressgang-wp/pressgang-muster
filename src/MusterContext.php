@@ -14,6 +14,8 @@ use PressGang\Muster\Victuals\VictualsFactory;
  */
 final class MusterContext
 {
+    private ?Victuals $victuals = null;
+
     /**
      * @param VictualsFactory $victualsFactory
      * @param LoggerInterface|null $logger
@@ -39,7 +41,9 @@ final class MusterContext
      */
     public function victuals(): Victuals
     {
-        return $this->victualsFactory->make($this->seed);
+        $this->victuals ??= $this->victualsFactory->make($this->seed);
+
+        return $this->victuals;
     }
 
     /**

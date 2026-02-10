@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\PostRef;
@@ -148,10 +149,6 @@ final class PostBuilder
      */
     public function save(): PostRef
     {
-        if (!function_exists('get_posts') || !function_exists('wp_insert_post') || !function_exists('wp_update_post')) {
-            throw new RuntimeException('WordPress runtime functions are required to save posts.');
-        }
-
         $slug = $this->resolveSlug();
         $status = (string) ($this->payload['post_status'] ?? 'draft');
 
@@ -161,6 +158,10 @@ final class PostBuilder
             );
 
             return new PostRef(0, $this->postType, $slug);
+        }
+
+        if (!function_exists('get_posts') || !function_exists('wp_insert_post') || !function_exists('wp_update_post')) {
+            throw new RuntimeException('WordPress runtime functions are required to save posts.');
         }
 
         $existing = get_posts([
@@ -233,6 +234,6 @@ final class PostBuilder
             return strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $title) ?? '', '-'));
         }
 
-        return 'muster-' . uniqid('', false);
+        throw new LogicException('Post slug is required when title is not set.');
     }
 }

@@ -1,9 +1,9 @@
 <?php
 
-declare(strict_types=1);
 
 namespace PressGang\Muster\Tests;
 
+use LogicException;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\MusterContext;
@@ -83,5 +83,16 @@ final class PostBuilderTest extends TestCase
 
         self::assertSame(0, $ref->id());
         self::assertCount(0, $GLOBALS['__muster_wp_posts']);
+    }
+
+    public function testSaveThrowsWhenNeitherSlugNorTitleIsProvided(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        $this->expectException(LogicException::class);
+
+        (new PostBuilder($context, 'event'))
+            ->status('publish')
+            ->save();
     }
 }
