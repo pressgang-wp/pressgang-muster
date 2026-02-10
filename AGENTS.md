@@ -153,6 +153,161 @@ No silent fallbacks.
 
 ---
 
+## 📝 Doc Blocks & Developer Guidance (Non-Negotiable)
+
+Muster relies heavily on **clear, intentional doc blocks** to communicate behaviour,
+constraints, and intent - especially for developers unfamiliar with PressGang.
+
+Doc blocks are not decoration. They are part of the public API.
+
+---
+
+### General Principles
+
+- Doc blocks should explain **what a developer needs to know to use this correctly**.
+- Prefer **why and how** over restating the method name.
+- Avoid noise:
+  - No `@package` tags
+  - No "Class ClassName" headers
+- Assume the reader understands PHP, but **not** Muster's architecture yet.
+
+If a method or class exists, its purpose should be clear from the doc block alone.
+
+---
+
+### Class Doc Blocks
+
+Class doc blocks should answer:
+
+1. What role does this class play in the system?
+2. When would a developer reach for it?
+3. What *does it not* do?
+
+Example:
+
+```php
+/**
+ * Orchestrates a single content provisioning run.
+ *
+ * A Muster coordinates Patterns and Builders to create or update WordPress
+ * data in a deterministic, idempotent way. It contains no persistence logic
+ * itself and should remain free of domain-specific behaviour.
+ */
+abstract class Muster
+```
+
+---
+
+### Method Doc Blocks
+
+Method doc blocks must include:
+- A short behavioural description (1-2 sentences)
+- Explicit `@param` and `@return` annotations
+- Notes on determinism, idempotency, or side effects when relevant
+
+Example:
+
+```php
+/**
+ * Defines a repeatable specification for generating multiple similar items.
+ *
+ * Patterns are the factory analogue in Muster. They control repetition,
+ * seeding, and execution order, but do not persist data themselves.
+ *
+ * @param string $name Human-readable pattern identifier (for debugging/logging).
+ * @return \PressGang\Muster\Patterns\Pattern
+ */
+public function pattern(string $name): Pattern
+```
+
+---
+
+### Builder Methods (Special Rules)
+
+Builder doc blocks must be explicit about persistence.
+
+Every builder method should make it clear whether it:
+- only mutates internal state
+- or performs WordPress writes
+
+Example:
+
+```php
+/**
+ * Persist the builder state to WordPress.
+ *
+ * This method performs an idempotent upsert based on the builder's identity
+ * rules (e.g. post type + slug). Calling save() multiple times must not
+ * create duplicate records.
+ *
+ * @return \PressGang\Muster\Refs\PostRef
+ */
+public function save(): PostRef
+```
+
+If a method does not persist data, say so.
+
+---
+
+### Pattern Closures & Callables
+
+Where a callable is accepted, the doc block must document:
+- Expected parameters
+- Expected return type
+- Behaviour if the contract is violated
+
+Example:
+
+```php
+/**
+ * Execute the pattern using the provided builder factory.
+ *
+ * The callable must return a Builder instance. The builder will be
+ * persisted automatically by the Pattern runner.
+ *
+ * @param callable(int $i): \PressGang\Muster\Builders\PostBuilder $factory
+ * @return void
+ */
+public function build(callable $factory): void
+```
+
+Fail fast if the contract is violated.
+
+---
+
+### Avoid Trivial Doc Blocks
+
+Methods whose behaviour is fully obvious from their name and signature
+may omit a doc block.
+
+Examples:
+- simple getters
+- fluent setters that only assign a value and return self
+
+Use judgement - but err on the side of clarity for public APIs.
+
+---
+
+### Documentation as API Stability
+
+Doc blocks are considered part of Muster's API surface.
+
+When changing behaviour:
+- Update the doc block
+- Treat undocumented behaviour as unstable
+- Prefer documentation updates before refactors
+
+If behaviour cannot be documented clearly, reconsider the design.
+
+---
+
+### Final Rule (Again)
+
+If a class or method cannot be explained clearly to a developer
+who has never used Muster before, it is not finished.
+
+---
+
 ## Testing and Validation
 
 - Prefer end-to-end vertical slice tests over exhaustive unit tests.
