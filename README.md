@@ -22,18 +22,19 @@ final class DemoMuster extends Muster
 {
     public function run(): void
     {
-        $this->page('About us')
+        $this->page()
+            ->title('About us')
             ->slug('about-us')
             ->status('publish')
-            ->content($this->victuals()->content(3))
+            ->content($this->victuals()->paragraphs(3))
             ->save();
 
         $this->pattern('events')
             ->seed(1201)
             ->count(5)
-            ->build(function (int $i, Muster $muster) {
-                return $muster->post('event')
-                    ->title($muster->victuals()->headline())
+            ->build(function (int $i) {
+                return $this->post('event')
+                    ->title($this->victuals()->headline())
                     ->slug('event-' . $i)
                     ->status('publish');
             });
@@ -49,3 +50,20 @@ Use a shared seed to make generated content repeatable between local and CI runs
 - Pattern-level override: `->seed(9876)`
 
 The same seed and inputs should produce the same generated values.
+
+## Running Tests
+
+Preferred (online dependencies available):
+
+```bash
+composer install
+vendor/bin/phpunit
+```
+
+Offline fallback in this repo:
+
+```bash
+php bin/run-tests.php
+```
+
+The fallback runner exists to keep the slice testable when Packagist access is unavailable.
