@@ -1,0 +1,27 @@
+# Dependencies
+/vendor/
+
+# Composer
+composer.lock
+
+# PHPUnit / testing
+.phpunit.result.cache
+.phpunit.cache/
+coverage/
+build/
+
+# IDEs / editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*.bak
