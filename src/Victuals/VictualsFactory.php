@@ -3,7 +3,10 @@
 namespace PressGang\Muster\Victuals;
 
 /**
- * Factory for creating seeded Victuals instances.
+ * Factory for creating deterministic Victuals instances.
+ *
+ * Locale defaults to `en_GB` so generated data better matches UK-first content
+ * assumptions used by PressGang projects.
  */
 final class VictualsFactory
 {
@@ -15,6 +18,11 @@ final class VictualsFactory
     }
 
     /**
+     * Build a Victuals wrapper around a seeded Faker generator.
+     *
+     * When a seed is provided, repeated calls with the same seed produce the same
+     * output sequence for supported Faker formatters.
+     *
      * @param int|null $seed
      * @return Victuals
      */

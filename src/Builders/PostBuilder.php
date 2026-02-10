@@ -18,6 +18,11 @@ final class PostBuilder
     private array $payload = [];
 
     /**
+     * @var array<string, array<int, string|int>>
+     */
+    private array $taxInput = [];
+
+    /**
      * @param MusterContext $context
      * @param string $postType
      * @param string|null $title
@@ -84,6 +89,8 @@ final class PostBuilder
      */
     public function excerpt(string $excerpt): self
     {
+        $this->payload['post_excerpt'] = $excerpt;
+
         return $this;
     }
 
@@ -93,6 +100,8 @@ final class PostBuilder
      */
     public function author(string|int $user): self
     {
+        $this->payload['post_author'] = $user;
+
         return $this;
     }
 
@@ -102,6 +111,8 @@ final class PostBuilder
      */
     public function template(string $template): self
     {
+        $this->payload['page_template'] = $template;
+
         return $this;
     }
 
@@ -111,6 +122,8 @@ final class PostBuilder
      */
     public function parent(string|int|PostRef $parent): self
     {
+        $this->payload['post_parent'] = $parent;
+
         return $this;
     }
 
@@ -121,6 +134,8 @@ final class PostBuilder
      */
     public function terms(string $taxonomy, array $terms): self
     {
+        $this->taxInput[$taxonomy] = array_values($terms);
+
         return $this;
     }
 
@@ -141,6 +156,8 @@ final class PostBuilder
      */
     public function acf(array $fields): self
     {
+        $this->payload['acf'] = $fields;
+
         return $this;
     }
 
@@ -192,8 +209,15 @@ final class PostBuilder
             'post_name' => $slug,
             'post_title' => (string) ($this->payload['post_title'] ?? ''),
             'post_content' => (string) ($this->payload['post_content'] ?? ''),
+            'post_excerpt' => (string) ($this->payload['post_excerpt'] ?? ''),
             'post_status' => $status,
+            'post_parent' => $this->resolveParentId($this->payload['post_parent'] ?? null),
         ];
+
+        $author = $this->resolveAuthorId($this->payload['post_author'] ?? null);
+        if ($author !== null) {
+            $attributes['post_author'] = $author;
+        }
 
         /** @var int|\WP_Error $saveResult */
         $saveResult = 0;
@@ -218,6 +242,21 @@ final class PostBuilder
             foreach ($meta as $key => $value) {
                 update_post_meta($postId, (string) $key, $value);
             }
+        }
+
+        if (isset($this->payload['page_template']) && function_exists('update_post_meta')) {
+            update_post_meta($postId, '_wp_page_template', (string) $this->payload['page_template']);
+        }
+
+        if ($this->taxInput !== [] && function_exists('wp_set_object_terms')) {
+            foreach ($this->taxInput as $taxonomy => $terms) {
+                wp_set_object_terms($postId, $terms, $taxonomy, false);
+            }
+        }
+
+        $acf = $this->payload['acf'] ?? [];
+        if (is_array($acf) && $acf !== []) {
+            $this->context->acf()->updateFields($acf, 'post', $postId);
         }
 
         $this->context->logger()->debug(
@@ -250,9 +289,63 @@ final class PostBuilder
                 return (string) sanitize_title($title);
             }
 
-            return strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $title) ?? '', '-'));
+            return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $title), '-'));
         }
 
         throw new LogicException('Post slug is required when title is not set.');
+    }
+
+    /**
+     * @param mixed $author
+     * @return int|null
+     */
+    private function resolveAuthorId(mixed $author): ?int
+    {
+        if (is_int($author)) {
+            return $author;
+        }
+
+        if (is_string($author) && $author !== '' && function_exists('get_user_by')) {
+            $user = get_user_by('login', $author);
+
+            if ($user !== false && isset($user->ID)) {
+                return (int) $user->ID;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param mixed $parent
+     * @return int
+     */
+    private function resolveParentId(mixed $parent): int
+    {
+        if ($parent instanceof PostRef) {
+            return $parent->id();
+        }
+
+        if (is_int($parent)) {
+            return $parent;
+        }
+
+        if (is_string($parent) && $parent !== '' && function_exists('get_posts')) {
+            $match = get_posts([
+                'name' => $parent,
+                'post_type' => $this->postType,
+                'post_status' => 'any',
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'suppress_filters' => true,
+                'no_found_rows' => true,
+            ]);
+
+            if (!empty($match)) {
+                return (int) $match[0];
+            }
+        }
+
+        return 0;
     }
 }

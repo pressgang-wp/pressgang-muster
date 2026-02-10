@@ -1,10 +1,10 @@
 <?php
 
-
 namespace PressGang\Muster\Tests;
 
 use LogicException;
 use PHPUnit\Framework\TestCase;
+use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
@@ -61,6 +61,30 @@ final class PostBuilderTest extends TestCase
         self::assertSame('publish', $stored['post_status']);
     }
 
+    public function testSaveAppliesExtendedFields(): void
+    {
+        $context = new MusterContext(new VictualsFactory(), acf: new TestAcfAdapter());
+
+        (new PostBuilder($context, 'event'))
+            ->title('Extended')
+            ->slug('extended')
+            ->status('publish')
+            ->excerpt('Summary')
+            ->author(3)
+            ->parent(2)
+            ->template('templates/custom.php')
+            ->terms('category', ['featured'])
+            ->acf(['field_key' => 'field_value'])
+            ->save();
+
+        self::assertSame('Summary', $GLOBALS['__muster_wp_posts']['event::extended']['post_excerpt']);
+        self::assertSame(3, $GLOBALS['__muster_wp_posts']['event::extended']['post_author']);
+        self::assertSame(2, $GLOBALS['__muster_wp_posts']['event::extended']['post_parent']);
+        self::assertSame('templates/custom.php', $GLOBALS['__muster_wp_meta'][1]['_wp_page_template']);
+        self::assertSame(['featured'], $GLOBALS['__muster_wp_post_terms'][1]['category']);
+        self::assertSame('post', $GLOBALS['__muster_wp_acf_last']['objectType']);
+    }
+
     public function testSaveUsesTitleToBuildSlugWhenSlugNotProvided(): void
     {
         $context = new MusterContext(new VictualsFactory());
@@ -94,5 +118,23 @@ final class PostBuilderTest extends TestCase
         (new PostBuilder($context, 'event'))
             ->status('publish')
             ->save();
+    }
+}
+
+final class TestAcfAdapter implements AcfAdapterInterface
+{
+    /**
+     * @param array<string, mixed> $fields
+     * @param string $objectType
+     * @param int $objectId
+     * @return void
+     */
+    public function updateFields(array $fields, string $objectType, int $objectId): void
+    {
+        $GLOBALS['__muster_wp_acf_last'] = [
+            'fields' => $fields,
+            'objectType' => $objectType,
+            'objectId' => $objectId,
+        ];
     }
 }

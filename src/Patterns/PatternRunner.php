@@ -19,6 +19,8 @@ final class PatternRunner
      *
      * Each run receives a fresh seeded Victuals instance scoped to the Muster lifecycle
      * for this pattern execution only.
+     *
+     * @throws UnexpectedValueException If the callable does not return a PostBuilder.
      */
     public function run(Pattern $pattern, callable $builder, Muster $muster): void
     {

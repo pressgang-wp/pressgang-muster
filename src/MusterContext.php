@@ -23,6 +23,7 @@ final class MusterContext
      * @param int|null $seed Global seed applied when no per-pattern override is set.
      * @param array<string, int> $seedOverrides Per-pattern seed overrides by name.
      * @param bool $dryRun
+     * @param array<int, string> $onlyPatterns Optional allowlist of pattern names.
      */
     public function __construct(
         private VictualsFactory $victualsFactory,
@@ -31,6 +32,7 @@ final class MusterContext
         private ?int $seed = null,
         private array $seedOverrides = [],
         private bool $dryRun = false,
+        private array $onlyPatterns = [],
     ) {
         $this->logger ??= new NullLogger();
         $this->acf ??= new NullAcfAdapter();
@@ -115,5 +117,32 @@ final class MusterContext
     public function dryRun(): bool
     {
         return $this->dryRun;
+    }
+
+    /**
+     * Return configured `--only` pattern allowlist values.
+     *
+     * @return array<int, string>
+     */
+    public function onlyPatterns(): array
+    {
+        return $this->onlyPatterns;
+    }
+
+    /**
+     * Check whether a named pattern should execute under current filter settings.
+     *
+     * When no allowlist is configured, all patterns are allowed.
+     *
+     * @param string $name
+     * @return bool
+     */
+    public function shouldRunPattern(string $name): bool
+    {
+        if ($this->onlyPatterns === []) {
+            return true;
+        }
+
+        return in_array($name, $this->onlyPatterns, true);
     }
 }

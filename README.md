@@ -46,10 +46,35 @@ final class DemoMuster extends Muster
 
 Use a shared seed to make generated content repeatable between local and CI runs.
 
-- WP-CLI shape: `wp capstan muster --seed=1234`
+- WP-CLI shape: `wp capstan muster <muster-class> --seed=1234`
 - Pattern-level override: `->seed(9876)`
 
 The same seed and inputs should produce the same generated values.
+
+## WP-CLI Usage
+
+```bash
+wp capstan muster App\\Muster\\DemoMuster --seed=1234
+wp capstan muster App\\Muster\\DemoMuster --dry-run
+wp capstan muster App\\Muster\\DemoMuster --only=events,pages
+```
+
+Flags:
+- `--seed=<int>` sets global seed.
+- `--dry-run` logs intent without writes.
+- `--only=<csv>` executes only matching pattern names.
+
+## Demo Scripts
+
+Run with WordPress loaded:
+
+```bash
+wp eval-file bin/demo-muster.php
+wp eval-file bin/demo-muster-extended.php
+```
+
+- `bin/demo-muster.php` covers deterministic post pattern upserts.
+- `bin/demo-muster-extended.php` covers idempotent post, term, user, and option upserts.
 
 ## Running Tests
 

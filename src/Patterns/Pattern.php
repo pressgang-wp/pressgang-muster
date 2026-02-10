@@ -73,6 +73,12 @@ final class Pattern
             throw new LogicException('Pattern count must be explicitly set before build().');
         }
 
+        if (!$this->context->shouldRunPattern($this->name)) {
+            $this->context->logger()->info(sprintf('Skipping pattern [%s] due to --only filter.', $this->name));
+
+            return new PatternResult($this->name, 0, $this->effectiveSeed());
+        }
+
         $this->runner->run($this, $builder, $this->muster);
 
         return new PatternResult($this->name, $this->count, $this->effectiveSeed());

@@ -4,6 +4,8 @@ namespace PressGang\Muster\Contracts;
 
 /**
  * Minimal logger contract for CLI and dry-run output.
+ *
+ * Implementations should avoid throwing so seeding flow remains predictable.
  */
 interface LoggerInterface
 {

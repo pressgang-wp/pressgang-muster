@@ -1,6 +1,5 @@
 <?php
 
-
 namespace Faker;
 
 use DateTimeImmutable;
@@ -47,6 +46,123 @@ final class Generator
         }
 
         return $out;
+    }
+
+    /**
+     * @param int $count
+     * @param bool $asText
+     * @return array<int, string>|string
+     */
+    public function words(int $count = 3, bool $asText = false): array|string
+    {
+        $words = [];
+        for ($i = 0; $i < $count; $i++) {
+            $words[] = $this->word();
+        }
+
+        if ($asText) {
+            return implode(' ', $words);
+        }
+
+        return $words;
+    }
+
+    /**
+     * @return string
+     */
+    public function slug(): string
+    {
+        return strtolower(str_replace(' ', '-', (string) $this->words(3, true)));
+    }
+
+    /**
+     * @return string
+     */
+    public function name(): string
+    {
+        return ucfirst($this->word()) . ' ' . ucfirst($this->word());
+    }
+
+    /**
+     * @return string
+     */
+    public function company(): string
+    {
+        return ucfirst($this->word()) . ' Ltd';
+    }
+
+    /**
+     * @return string
+     */
+    public function safeEmail(): string
+    {
+        return $this->word() . '@example.test';
+    }
+
+    /**
+     * @return string
+     */
+    public function email(): string
+    {
+        return $this->safeEmail();
+    }
+
+    /**
+     * @return string
+     */
+    public function url(): string
+    {
+        return 'https://example.test/' . $this->slug();
+    }
+
+    /**
+     * @param string $mask
+     * @return string
+     */
+    public function numerify(string $mask): string
+    {
+        $out = '';
+        $len = strlen($mask);
+
+        for ($i = 0; $i < $len; $i++) {
+            $char = $mask[$i];
+            $out .= $char === '#' ? (string) $this->nextInt(0, 9) : $char;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return string
+     */
+    public function postcode(): string
+    {
+        return 'BS1 ' . $this->nextInt(1, 9) . 'AA';
+    }
+
+    /**
+     * @return string
+     */
+    public function city(): string
+    {
+        return ucfirst($this->word());
+    }
+
+    /**
+     * @param string $format
+     * @return string
+     */
+    public function date(string $format = 'Y-m-d'): string
+    {
+        return $this->dateTime()->format($format);
+    }
+
+    /**
+     * @return DateTimeInterface
+     */
+    public function dateTime(): DateTimeInterface
+    {
+        return $this->dateTimeBetween('-1 year', '+1 year');
     }
 
     /**
