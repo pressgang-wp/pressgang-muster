@@ -142,6 +142,8 @@ final class Victuals
      * @param string $from
      * @param string $to
      * @return \DateTimeInterface
+     *
+     * See: https://fakerphp.org/formatters/date-and-time/#datetimebetween
      */
     public function dateBetween(string $from, string $to): \DateTimeInterface
     {

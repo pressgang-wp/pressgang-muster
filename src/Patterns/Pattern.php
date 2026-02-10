@@ -56,11 +56,16 @@ final class Pattern
     /**
      * Run the pattern callable.
      *
+     * This executes the closure exactly `count()` times, in ascending index order.
+     * Seed resolution uses pattern seed first, then context seed override/global seed.
+     *
      * Builder signature:
      * `callable(int $i): \PressGang\Muster\Builders\PostBuilder`
      *
      * @param callable(int): \PressGang\Muster\Builders\PostBuilder $builder
      * @return PatternResult
+     *
+     * @throws LogicException If `count()` was not set before `build()`.
      */
     public function build(callable $builder): PatternResult
     {

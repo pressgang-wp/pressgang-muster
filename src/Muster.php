@@ -89,6 +89,7 @@ abstract class Muster
      * Access the Victuals helper for deterministic generated values.
      *
      * During a pattern run this returns the per-pattern scoped instance.
+     * Outside a pattern run, it returns the context-level seeded instance.
      *
      * @return Victuals
      */
@@ -115,6 +116,9 @@ abstract class Muster
     /**
      * Scope Victuals for a single pattern execution.
      *
+     * Internal lifecycle hook used by `PatternRunner` to ensure all Victuals calls in one
+     * pattern run share the same seeded generator instance.
+     *
      * @param Victuals $victuals
      * @return void
      */
@@ -125,6 +129,8 @@ abstract class Muster
 
     /**
      * End the active pattern Victuals scope.
+     *
+     * Internal lifecycle hook paired with `beginPatternVictualsScope()`.
      *
      * @return void
      */
@@ -137,6 +143,9 @@ abstract class Muster
      * Resolve post-type shorthand calls to `post($postType)`.
      *
      * Method resolution is guarded by `post_type_exists()`.
+     * If the first argument is provided, it is applied as the builder title.
+     *
+     * See: https://developer.wordpress.org/reference/functions/post_type_exists/
      *
      * @param string $method
      * @param array<int, mixed> $args

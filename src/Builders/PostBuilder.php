@@ -146,6 +146,19 @@ final class PostBuilder
 
     /**
      * @return PostRef
+     *
+     * Identity rule: `post_type + post_name` (slug).
+     * Lookup is performed with `get_posts()` using `name`, `post_type`, and `post_status=any`.
+     * Existing records are updated via `wp_update_post()`; missing records are inserted via
+     * `wp_insert_post()`. Meta payload is applied with `update_post_meta()`.
+     *
+     * See: https://developer.wordpress.org/reference/functions/get_posts/
+     * See: https://developer.wordpress.org/reference/functions/wp_update_post/
+     * See: https://developer.wordpress.org/reference/functions/wp_insert_post/
+     * See: https://developer.wordpress.org/reference/functions/update_post_meta/
+     *
+     * @throws LogicException If neither slug nor title is set.
+     * @throws RuntimeException If WordPress runtime functions are unavailable or save fails.
      */
     public function save(): PostRef
     {
@@ -216,6 +229,12 @@ final class PostBuilder
 
     /**
      * @return string
+     *
+     * Resolves slug from explicit `slug()` first, then derived `sanitize_title(title)`.
+     *
+     * See: https://developer.wordpress.org/reference/functions/sanitize_title/
+     *
+     * @throws LogicException If neither slug nor title is set.
      */
     private function resolveSlug(): string
     {

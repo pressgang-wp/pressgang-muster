@@ -38,6 +38,9 @@ final class MusterContext
 
     /**
      * @return Victuals
+     *
+     * Returns a cached Victuals instance for the context lifecycle so repeated calls
+     * continue the same seeded pseudo-random sequence.
      */
     public function victuals(): Victuals
     {
@@ -49,6 +52,8 @@ final class MusterContext
     /**
      * @param int|null $seed
      * @return Victuals
+     *
+     * Returns a fresh Victuals instance for explicit scope boundaries (for example, Pattern runs).
      */
     public function victualsForSeed(?int $seed = null): Victuals
     {

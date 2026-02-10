@@ -21,6 +21,12 @@ Muster favors clarity over cleverness, and predictability over automation.
 - Avoid magic:
   - Magic methods are allowed **only** when guarded and unambiguous (for example, post types via `post_type_exists()`).
 - Behavior must be inspectable and predictable by reading the code.
+- Favour DRY and SOLID:
+  - Keep classes focused (SRP), avoid hidden coupling, and extract repeated logic before it spreads.
+  - Prefer explicit contracts and value objects over implicit state sharing.
+- Doc blocks must be useful:
+  - Describe identity/upsert rules and side effects.
+  - Reference relevant WordPress internals with `See:` links where behaviour relies on core APIs.
 
 If something is surprising, it is probably wrong.
 

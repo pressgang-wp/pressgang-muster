@@ -16,6 +16,9 @@ final class PatternRunner
      * @param callable(int): PostBuilder $builder
      * @param Muster $muster
      * @return void
+     *
+     * Each run receives a fresh seeded Victuals instance scoped to the Muster lifecycle
+     * for this pattern execution only.
      */
     public function run(Pattern $pattern, callable $builder, Muster $muster): void
     {
