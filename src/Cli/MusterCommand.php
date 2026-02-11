@@ -55,9 +55,7 @@ final class MusterCommand
     {
         $musterClass = $args[0] ?? '';
         if (!is_string($musterClass) || $musterClass === '') {
-            self::emit('Muster class argument is required.');
-
-            return;
+            self::fail('Muster class argument is required.');
         }
 
         $seed = isset($assocArgs['seed']) ? (int) $assocArgs['seed'] : null;
@@ -81,7 +79,7 @@ final class MusterCommand
 
             self::emit('Muster completed.');
         } catch (\Throwable $e) {
-            self::emit('Muster failed: ' . $e->getMessage());
+            self::fail('Muster failed: ' . $e->getMessage());
         }
     }
 
@@ -126,5 +124,25 @@ final class MusterCommand
         }
 
         echo $message . "\n";
+    }
+
+    /**
+     * Emit a failure message and terminate with non-zero status.
+     *
+     * Uses `WP_CLI::error()` when available; otherwise writes to STDERR and exits.
+     *
+     * See: https://make.wordpress.org/cli/handbook/references/internal-api/wp-cli-error/
+     *
+     * @param string $message
+     * @return never
+     */
+    private static function fail(string $message): never
+    {
+        if (class_exists('\\WP_CLI')) {
+            \WP_CLI::error($message);
+        }
+
+        fwrite(STDERR, $message . "\n");
+        exit(1);
     }
 }

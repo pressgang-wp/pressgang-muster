@@ -1,6 +1,12 @@
 <?php
 
 namespace {
+    if (!class_exists('WP_CLI_ExitException')) {
+        class WP_CLI_ExitException extends \RuntimeException
+        {
+        }
+    }
+
     if (!class_exists('WP_CLI')) {
         class WP_CLI
         {
@@ -22,11 +28,23 @@ namespace {
             {
                 $GLOBALS['__muster_wp_cli_lines'][] = $message;
             }
+
+            /**
+             * @param string $message
+             * @return never
+             * @throws WP_CLI_ExitException
+             */
+            public static function error(string $message): never
+            {
+                $GLOBALS['__muster_wp_cli_lines'][] = $message;
+                throw new WP_CLI_ExitException($message);
+            }
         }
     }
 }
 
 namespace PressGang\Muster\Tests {
+    use WP_CLI_ExitException;
     use PHPUnit\Framework\TestCase;
     use PressGang\Muster\Cli\MusterCommand;
     use PressGang\Muster\Muster;
@@ -48,12 +66,27 @@ namespace PressGang\Muster\Tests {
             self::assertSame('Muster completed.', $GLOBALS['__muster_wp_cli_lines'][0] ?? '');
         }
 
-        public function testHandleReportsMissingClass(): void
-        {
-            MusterCommand::handle(['Missing\\ClassName'], []);
+    public function testHandleReportsMissingClass(): void
+    {
+        $this->expectException(WP_CLI_ExitException::class);
 
+        try {
+            MusterCommand::handle(['Missing\\ClassName'], []);
+        } finally {
             self::assertStringContainsString('Muster failed:', (string) ($GLOBALS['__muster_wp_cli_lines'][0] ?? ''));
         }
+    }
+
+    public function testHandleFailsWhenNoClassArgumentProvided(): void
+    {
+        $this->expectException(WP_CLI_ExitException::class);
+
+        try {
+            MusterCommand::handle([], []);
+        } finally {
+            self::assertSame('Muster class argument is required.', (string) ($GLOBALS['__muster_wp_cli_lines'][0] ?? ''));
+        }
+    }
 
         public function testOnlyFilterSkipsPatternsNotInList(): void
         {
