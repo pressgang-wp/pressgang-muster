@@ -1,4 +1,6 @@
-# Muster
+<img src="https://github.com/pressgang-wp/pressgang-muster/blob/main/assets/img/muster-banner.png" alt="Muster">
+
+# 🍪Muster
 
 **Muster** is a deterministic, Laravel-seeding-style API for WordPress content setup.
 
