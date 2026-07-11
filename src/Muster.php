@@ -3,9 +3,12 @@
 namespace PressGang\Muster;
 
 use BadMethodCallException;
+use PressGang\Muster\Builders\AttachmentBuilder;
+use PressGang\Muster\Builders\MenuBuilder;
 use PressGang\Muster\Builders\OptionBuilder;
 use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\Builders\TermBuilder;
+use PressGang\Muster\Builders\TruncateBuilder;
 use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Patterns\Pattern;
 use PressGang\Muster\Victuals\Victuals;
@@ -83,6 +86,38 @@ abstract class Muster
     public function option(string $key): OptionBuilder
     {
         return new OptionBuilder($this->context, $key);
+    }
+
+    /**
+     * Start a nav-menu builder.
+     *
+     * @param string $name
+     * @return MenuBuilder
+     */
+    public function menu(string $name): MenuBuilder
+    {
+        return new MenuBuilder($this->context, $name);
+    }
+
+    /**
+     * Start an attachment (media) builder.
+     *
+     * @param string $slug
+     * @return AttachmentBuilder
+     */
+    public function attachment(string $slug): AttachmentBuilder
+    {
+        return new AttachmentBuilder($this->context, $slug);
+    }
+
+    /**
+     * Start a truncate (clean-slate reset) builder.
+     *
+     * @return TruncateBuilder
+     */
+    public function truncate(): TruncateBuilder
+    {
+        return new TruncateBuilder($this->context);
     }
 
     /**

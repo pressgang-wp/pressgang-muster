@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Cli;
 
 use InvalidArgumentException;
+use PressGang\Muster\Adapters\LiveAcfAdapter;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
@@ -69,6 +70,7 @@ final class MusterCommand
         try {
             $context = new MusterContext(
                 new VictualsFactory(),
+                acf: function_exists('update_field') ? new LiveAcfAdapter() : null,
                 seed: $seed,
                 dryRun: $dryRun,
                 onlyPatterns: $only,

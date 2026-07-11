@@ -11,7 +11,7 @@ It keeps WordPress semantics explicit while giving you a fluent way to orchestra
 - `Muster`: orchestration entrypoint where your seed flow lives.
 - `Victuals`: curated Faker wrapper with UK-leaning defaults.
 - `Pattern`: repeatable batch runner with `count()` and optional per-pattern seed.
-- `Builders`: explicit post/term/user/option builders with idempotent-upsert intent.
+- `Builders`: explicit post/term/user/option/menu/attachment builders with idempotent-upsert intent, plus a `truncate()` clean-slate reset.
 
 ## Quick Example
 

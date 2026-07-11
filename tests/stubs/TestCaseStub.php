@@ -93,4 +93,52 @@ class TestCase
             throw new Exception('Assertion failed: value is not expected instance.');
         }
     }
+
+    /**
+     * @param mixed $expected
+     * @param mixed $actual
+     * @return void
+     */
+    public static function assertGreaterThan(mixed $expected, mixed $actual): void
+    {
+        if (!($actual > $expected)) {
+            throw new Exception('Assertion failed: value is not greater than expected.');
+        }
+    }
+
+    /**
+     * @param mixed $actual
+     * @return void
+     */
+    public static function assertNotEmpty(mixed $actual): void
+    {
+        if (empty($actual)) {
+            throw new Exception('Assertion failed: value is empty.');
+        }
+    }
+
+    /**
+     * @param mixed $needle
+     * @param iterable<mixed> $haystack
+     * @return void
+     */
+    public static function assertNotContains(mixed $needle, iterable $haystack): void
+    {
+        $items = is_array($haystack) ? $haystack : iterator_to_array($haystack, false);
+
+        if (in_array($needle, $items, true)) {
+            throw new Exception('Assertion failed: value unexpectedly present.');
+        }
+    }
+
+    /**
+     * @param string $filename
+     * @return void
+     */
+    public static function assertFileExists(string $filename): void
+    {
+        if (!is_file($filename)) {
+            throw new Exception('Assertion failed: file does not exist.');
+        }
+    }
 }

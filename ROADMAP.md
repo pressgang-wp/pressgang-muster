@@ -24,8 +24,8 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### New Builders
 
-- [ ] **AttachmentBuilder** — register media (images, PDFs), set as featured image on posts, placeholder image services (`wp_insert_attachment()`, `wp_generate_attachment_metadata()`)
-- [ ] **MenuBuilder** — create nav menus and menu items with ordering, parent/child nesting, custom links, post/term/page targets (`wp_create_nav_menu()`, `wp_update_nav_menu_item()`)
+- [x] **AttachmentBuilder** — register media (images, PDFs), set as featured image on posts, deterministic generated placeholders (`wp_insert_attachment()`, `wp_generate_attachment_metadata()`)
+- [x] **MenuBuilder** — create nav menus and menu items with ordering, parent/child nesting, custom links, post/term/page targets (`wp_create_nav_menu()`, `wp_update_nav_menu_item()`)
 - [ ] **CommentBuilder** — create comments on posts with author, content, status (approved/pending/spam), threaded replies (`wp_insert_comment()`)
 
 #### Factory Ergonomics
@@ -52,7 +52,7 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### ACF Adapter
 
-- [ ] **LiveAcfAdapter** — real implementation calling `update_field()` / `update_sub_field()`
+- [x] **LiveAcfAdapter** — real implementation calling `update_field()` (repeater/group values pass through as arrays; `update_sub_field()` granularity still open)
 - [ ] **Repeater fields** — nested array to ACF repeater row format
 - [ ] **Flexible content** — layout-based field groups
 - [ ] **Gallery fields** — array of attachment IDs
@@ -67,7 +67,7 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### Reset / Teardown
 
-- [ ] **Truncate capability** — clean-slate reset before seeding (delete all posts of a type, truncate terms, etc.)
+- [x] **Truncate capability** — clean-slate reset before seeding (delete all posts of a type, truncate terms, etc.)
 
 ---
 

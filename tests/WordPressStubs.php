@@ -19,6 +19,18 @@ namespace {
         {
             $name = (string) ($args['name'] ?? '');
             $postType = (string) ($args['post_type'] ?? 'post');
+
+            if ($name === '') {
+                $ids = [];
+                foreach ($GLOBALS['__muster_wp_posts'] ?? [] as $row) {
+                    if (($row['post_type'] ?? 'post') === $postType) {
+                        $ids[] = (int) $row['ID'];
+                    }
+                }
+
+                return $ids;
+            }
+
             $key = $postType . '::' . $name;
             $row = $GLOBALS['__muster_wp_posts'][$key] ?? null;
 
@@ -400,6 +412,177 @@ namespace {
             return in_array($postType, $allowed, true);
         }
     }
+
+    if (!function_exists('update_field')) {
+        function update_field(string $selector, mixed $value, int|string $postId = 0): bool
+        {
+            $GLOBALS['__muster_acf_updates'][] = ['selector' => $selector, 'value' => $value, 'target' => $postId];
+
+            return true;
+        }
+    }
+
+    if (!function_exists('wp_get_nav_menu_object')) {
+        function wp_get_nav_menu_object(string $menu): object|false
+        {
+            $id = $GLOBALS['__muster_wp_menus'][$menu] ?? null;
+
+            return $id === null ? false : (object) ['term_id' => $id, 'name' => $menu];
+        }
+    }
+
+    if (!function_exists('wp_create_nav_menu')) {
+        function wp_create_nav_menu(string $name): int|WP_Error
+        {
+            $id = (int) ($GLOBALS['__muster_wp_next_menu_id'] ?? 100);
+            $GLOBALS['__muster_wp_next_menu_id'] = $id + 1;
+            $GLOBALS['__muster_wp_menus'][$name] = $id;
+            $GLOBALS['__muster_wp_menu_items'][$id] = [];
+
+            return $id;
+        }
+    }
+
+    if (!function_exists('wp_update_nav_menu_item')) {
+        /**
+         * @param array<string, mixed> $args
+         */
+        function wp_update_nav_menu_item(int $menuId, int $itemId = 0, array $args = []): int|WP_Error
+        {
+            $id = (int) ($GLOBALS['__muster_wp_next_menu_item_id'] ?? 500);
+            $GLOBALS['__muster_wp_next_menu_item_id'] = $id + 1;
+            $GLOBALS['__muster_wp_menu_items'][$menuId][$id] = $args;
+
+            return $id;
+        }
+    }
+
+    if (!function_exists('wp_get_nav_menu_items')) {
+        /**
+         * @return array<int, object>|false
+         */
+        function wp_get_nav_menu_items(int|string|object $menu): array|false
+        {
+            $menuId = is_object($menu) ? (int) $menu->term_id : (int) $menu;
+            $items = $GLOBALS['__muster_wp_menu_items'][$menuId] ?? [];
+
+            return array_map(
+                static fn (int $id): object => (object) ['ID' => $id],
+                array_keys($items)
+            );
+        }
+    }
+
+    if (!function_exists('wp_delete_post')) {
+        function wp_delete_post(int $postId, bool $force = false): mixed
+        {
+            $GLOBALS['__muster_wp_deleted_posts'][] = $postId;
+
+            foreach ($GLOBALS['__muster_wp_menu_items'] ?? [] as $menuId => $items) {
+                unset($GLOBALS['__muster_wp_menu_items'][$menuId][$postId]);
+            }
+
+            foreach ($GLOBALS['__muster_wp_posts'] ?? [] as $key => $row) {
+                if ((int) $row['ID'] === $postId) {
+                    unset($GLOBALS['__muster_wp_posts'][$key]);
+                }
+            }
+
+            return true;
+        }
+    }
+
+    if (!function_exists('get_theme_mod')) {
+        function get_theme_mod(string $name, mixed $default = false): mixed
+        {
+            return $GLOBALS['__muster_wp_theme_mods'][$name] ?? $default;
+        }
+    }
+
+    if (!function_exists('set_theme_mod')) {
+        function set_theme_mod(string $name, mixed $value): bool
+        {
+            $GLOBALS['__muster_wp_theme_mods'][$name] = $value;
+
+            return true;
+        }
+    }
+
+    if (!function_exists('wp_upload_dir')) {
+        /**
+         * @return array<string, mixed>
+         */
+        function wp_upload_dir(): array
+        {
+            $dir = $GLOBALS['__muster_wp_upload_dir'] ?? sys_get_temp_dir() . '/muster-uploads';
+
+            return ['path' => $dir, 'url' => 'https://example.test/uploads', 'error' => false];
+        }
+    }
+
+    if (!function_exists('wp_insert_attachment')) {
+        /**
+         * @param array<string, mixed> $attrs
+         */
+        function wp_insert_attachment(array $attrs, string $file = '', int $parent = 0, bool $wpError = false): int|WP_Error
+        {
+            $attrs['post_type'] = 'attachment';
+            $attrs['post_parent'] = $parent;
+
+            /** @var int|WP_Error $id */
+            $id = wp_insert_post($attrs, $wpError);
+
+            if (is_int($id)) {
+                $GLOBALS['__muster_wp_attachment_files'][$id] = $file;
+            }
+
+            return $id;
+        }
+    }
+
+    if (!function_exists('set_post_thumbnail')) {
+        function set_post_thumbnail(int $postId, int $attachmentId): bool
+        {
+            $GLOBALS['__muster_wp_thumbnails'][$postId] = $attachmentId;
+
+            return true;
+        }
+    }
+
+    if (!function_exists('get_terms')) {
+        /**
+         * @param array<string, mixed> $args
+         * @return array<int, int>|WP_Error
+         */
+        function get_terms(array $args = []): array|WP_Error
+        {
+            $taxonomy = (string) ($args['taxonomy'] ?? '');
+            $ids = [];
+
+            foreach ($GLOBALS['__muster_wp_terms'] ?? [] as $row) {
+                if (($row['taxonomy'] ?? '') === $taxonomy) {
+                    $ids[] = (int) $row['term_id'];
+                }
+            }
+
+            return $ids;
+        }
+    }
+
+    if (!function_exists('wp_delete_term')) {
+        function wp_delete_term(int $termId, string $taxonomy): mixed
+        {
+            $GLOBALS['__muster_wp_deleted_terms'][] = [$termId, $taxonomy];
+
+            foreach ($GLOBALS['__muster_wp_terms'] ?? [] as $key => $row) {
+                if ((int) $row['term_id'] === $termId && ($row['taxonomy'] ?? '') === $taxonomy) {
+                    unset($GLOBALS['__muster_wp_terms'][$key]);
+                }
+            }
+
+            return true;
+        }
+    }
 }
 
 namespace PressGang\Muster\Tests {
@@ -426,5 +609,18 @@ namespace PressGang\Muster\Tests {
 
         $GLOBALS['__muster_wp_cli_lines'] = [];
         $GLOBALS['__muster_wp_cli_commands'] = [];
+
+        $GLOBALS['__muster_acf_updates'] = [];
+
+        $GLOBALS['__muster_wp_menus'] = [];
+        $GLOBALS['__muster_wp_menu_items'] = [];
+        $GLOBALS['__muster_wp_next_menu_id'] = 100;
+        $GLOBALS['__muster_wp_next_menu_item_id'] = 500;
+        $GLOBALS['__muster_wp_theme_mods'] = [];
+        $GLOBALS['__muster_wp_deleted_posts'] = [];
+        $GLOBALS['__muster_wp_deleted_terms'] = [];
+        $GLOBALS['__muster_wp_thumbnails'] = [];
+        $GLOBALS['__muster_wp_attachment_files'] = [];
+        $GLOBALS['__muster_wp_upload_dir'] = sys_get_temp_dir() . '/muster-uploads-' . getmypid();
     }
 }
