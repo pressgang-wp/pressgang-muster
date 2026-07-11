@@ -41,10 +41,10 @@ final class AcfJson
      * The seedable targets a group's location rules point at.
      *
      * ACF locations are an OR-list of AND-rule groups. Only equality rules
-     * for `post_type` and `page_template` are returned — the two params a
-     * seeder can act on (create a post of that type / a page with that
-     * template). Other params (taxonomy terms, user roles, options pages)
-     * are out of scope for v1.
+     * for `post_type`, `page_template`, and `options_page` are returned —
+     * the params a seeder can act on (create a post of that type / a page
+     * with that template / write the group's option values). Other params
+     * (taxonomy terms, user roles) are out of scope for v1.
      *
      * @param array<string, mixed> $group A decoded field group.
      * @return array<int, array{param: string, value: string}>
@@ -57,7 +57,7 @@ final class AcfJson
             foreach ((array) $andGroup as $rule) {
                 $param = $rule['param'] ?? '';
 
-                if (($rule['operator'] ?? '') === '==' && in_array($param, ['post_type', 'page_template'], true)) {
+                if (($rule['operator'] ?? '') === '==' && in_array($param, ['post_type', 'page_template', 'options_page'], true)) {
                     $targets[] = ['param' => $param, 'value' => (string) $rule['value']];
                 }
             }

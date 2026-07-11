@@ -57,6 +57,12 @@ final class AcfValueGenerator
     /**
      * Values for required fields only — the sparsest publishable state.
      *
+     * The required-only filter applies at every depth: a required repeater or
+     * group still recurses, but its rows carry only their own required
+     * sub-fields. This is what makes `minimal()` a faithful "sparsest" state —
+     * the optional-field gaps that break templates (empty link, missing image)
+     * are reproduced inside nested content, not just at the top level.
+     *
      * @param array<int, array<string, mixed>> $fields A group's `fields` array.
      * @return array<string, mixed>
      */
@@ -66,11 +72,33 @@ final class AcfValueGenerator
     }
 
     /**
+     * Top-level values, keyed by field KEY (what update_field wants for a
+     * post's own fields). Thin wrapper over collect() with the key strategy.
+     *
      * @param array<int, array<string, mixed>> $fields
-     * @param bool $requiredOnly
      * @return array<string, mixed>
      */
     private function generate(array $fields, bool $requiredOnly): array
+    {
+        return $this->collect(
+            $fields,
+            $requiredOnly,
+            static fn (array $field): string => (string) ($field['key'] ?? $field['name'] ?? ''),
+        );
+    }
+
+    /**
+     * The one loop behind both top-level and nested value building: skip
+     * optional fields when required-only, generate a value, drop nulls, and
+     * key each survivor via $keyOf (field key at the top level, sub-field name
+     * inside rows). Centralising it keeps the two key strategies as the only
+     * difference between the two callers.
+     *
+     * @param array<int, array<string, mixed>> $fields
+     * @param callable(array<string, mixed>): string $keyOf
+     * @return array<string, mixed>
+     */
+    private function collect(array $fields, bool $requiredOnly, callable $keyOf): array
     {
         $values = [];
 
@@ -79,10 +107,10 @@ final class AcfValueGenerator
                 continue;
             }
 
-            $value = $this->value($field);
+            $value = $this->value($field, $requiredOnly);
 
             if ($value !== null) {
-                $values[(string) ($field['key'] ?? $field['name'])] = $value;
+                $values[$keyOf($field)] = $value;
             }
         }
 
@@ -93,10 +121,13 @@ final class AcfValueGenerator
      * A representative value for one field definition, or null when the type
      * is non-content (tabs, messages) or needs an absent provider.
      *
+     * $requiredOnly is carried through so that container fields (repeater,
+     * group, flexible content) recurse with the same required-only policy.
+     *
      * @param array<string, mixed> $field
      * @return mixed
      */
-    private function value(array $field): mixed
+    private function value(array $field, bool $requiredOnly): mixed
     {
         return match ((string) ($field['type'] ?? 'text')) {
             'text' => $this->victuals->headline(),
@@ -107,7 +138,7 @@ final class AcfValueGenerator
             'number', 'range' => $this->numberWithin($field),
             'true_false' => 1,
             'select', 'radio', 'button_group' => $this->choice($field),
-            'checkbox' => array_slice(array_keys((array) ($field['choices'] ?? [])), 0, 1),
+            'checkbox' => $this->choice($field, alwaysArray: true),
             'link' => ['title' => $this->victuals->sentence(3), 'url' => '/', 'target' => ''],
             'date_picker' => $this->victuals->date('Ymd'),
             'date_time_picker' => $this->victuals->datetime(),
@@ -120,14 +151,19 @@ final class AcfValueGenerator
             'relationship' => $this->relatedPosts($field),
             'taxonomy' => $this->relatedTerm($field),
             'user' => $this->fromProvider('user'),
-            'repeater' => $this->repeaterRows($field),
-            'group' => $this->subValues((array) ($field['sub_fields'] ?? [])),
-            'flexible_content' => $this->flexibleRows($field),
+            'repeater' => $this->repeaterRows($field, $requiredOnly),
+            'group' => $this->subValues((array) ($field['sub_fields'] ?? []), $requiredOnly),
+            'flexible_content' => $this->flexibleRows($field, $requiredOnly),
             default => null,
         };
     }
 
     /**
+     * Midpoint of the field's declared `min`/`max` (defaulting to 1..max(10))
+     * — a value that sits safely inside any validated range. Bounds are
+     * coarsened to integers, so decimal `min`/`max`/`step` on a number/range
+     * field are not honoured; that is acceptable for fixture data.
+     *
      * @param array<string, mixed> $field
      */
     private function numberWithin(array $field): int
@@ -139,11 +175,14 @@ final class AcfValueGenerator
     }
 
     /**
-     * First declared choice — honouring `multiple` by wrapping in an array.
+     * First declared choice, or null when the field declares none. Wrapped in
+     * an array when the field is `multiple` or when $alwaysArray is set —
+     * checkbox values are always arrays, so it passes the latter to stay
+     * consistent with the null-on-empty behaviour of select/radio.
      *
      * @param array<string, mixed> $field
      */
-    private function choice(array $field): mixed
+    private function choice(array $field, bool $alwaysArray = false): mixed
     {
         $first = array_key_first((array) ($field['choices'] ?? []));
 
@@ -151,7 +190,7 @@ final class AcfValueGenerator
             return null;
         }
 
-        return empty($field['multiple']) ? $first : [$first];
+        return ($alwaysArray || ! empty($field['multiple'])) ? [$first] : $first;
     }
 
     /**
@@ -163,6 +202,10 @@ final class AcfValueGenerator
     }
 
     /**
+     * Up to two attachment IDs from the provider — enough to prove a gallery
+     * renders multiple items. Null (field skipped) when no provider supplies
+     * even the first.
+     *
      * @param array<string, mixed> $field
      * @return array<int, int>|null
      */
@@ -176,6 +219,9 @@ final class AcfValueGenerator
     }
 
     /**
+     * A single related post ID from the provider, wrapped in an array when the
+     * field is `multiple` (post_object) — null when no provider is available.
+     *
      * @param array<string, mixed> $field
      */
     private function relatedPost(array $field): mixed
@@ -201,6 +247,10 @@ final class AcfValueGenerator
     }
 
     /**
+     * A single term ID from the provider, wrapped in an array for the
+     * multi-value `field_type`s (checkbox, multi_select) and returned bare
+     * otherwise — null when no provider is available.
+     *
      * @param array<string, mixed> $field
      */
     private function relatedTerm(array $field): mixed
@@ -223,13 +273,13 @@ final class AcfValueGenerator
      * @param array<string, mixed> $field
      * @return array<int, array<string, mixed>>
      */
-    private function repeaterRows(array $field): array
+    private function repeaterRows(array $field, bool $requiredOnly): array
     {
         $count = max(2, (int) ($field['min'] ?? 0));
         $rows = [];
 
         for ($i = 0; $i < $count; $i++) {
-            $rows[] = $this->subValues((array) ($field['sub_fields'] ?? []));
+            $rows[] = $this->subValues((array) ($field['sub_fields'] ?? []), $requiredOnly);
         }
 
         return $rows;
@@ -242,13 +292,13 @@ final class AcfValueGenerator
      * @param array<string, mixed> $field
      * @return array<int, array<string, mixed>>
      */
-    private function flexibleRows(array $field): array
+    private function flexibleRows(array $field, bool $requiredOnly): array
     {
         $rows = [];
 
         foreach ((array) ($field['layouts'] ?? []) as $layout) {
             $rows[] = ['acf_fc_layout' => (string) ($layout['name'] ?? '')]
-                + $this->subValues((array) ($layout['sub_fields'] ?? []));
+                + $this->subValues((array) ($layout['sub_fields'] ?? []), $requiredOnly);
         }
 
         return $rows;
@@ -256,23 +306,18 @@ final class AcfValueGenerator
 
     /**
      * Sub-field values keyed by NAME (ACF's update APIs expect names inside
-     * repeater/group/layout rows, unlike top-level selectors).
+     * repeater/group/layout rows, unlike the top-level KEY selector). Same
+     * collect() loop as generate(), differing only in that key strategy.
      *
      * @param array<int, array<string, mixed>> $subFields
      * @return array<string, mixed>
      */
-    private function subValues(array $subFields): array
+    private function subValues(array $subFields, bool $requiredOnly): array
     {
-        $values = [];
-
-        foreach ($subFields as $subField) {
-            $value = $this->value($subField);
-
-            if ($value !== null) {
-                $values[(string) ($subField['name'] ?? '')] = $value;
-            }
-        }
-
-        return $values;
+        return $this->collect(
+            $subFields,
+            $requiredOnly,
+            static fn (array $subField): string => (string) ($subField['name'] ?? ''),
+        );
     }
 }

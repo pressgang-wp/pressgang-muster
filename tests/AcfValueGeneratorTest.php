@@ -82,6 +82,29 @@ final class AcfValueGeneratorTest extends TestCase
         self::assertIsString($values['field_title']);
     }
 
+    public function testMinimalPropagatesRequiredOnlyIntoRepeaterRows(): void
+    {
+        $generator = new AcfValueGenerator((new VictualsFactory())->make(42));
+        $values = $generator->minimal([
+            [
+                'key' => 'field_slides',
+                'name' => 'slides',
+                'type' => 'repeater',
+                'required' => 1,
+                'sub_fields' => [
+                    ['key' => 'field_heading', 'name' => 'heading', 'type' => 'text', 'required' => 1],
+                    ['key' => 'field_caption', 'name' => 'caption', 'type' => 'text'],
+                ],
+            ],
+        ]);
+
+        // The required repeater recurses, but each row carries only its
+        // required sub-field — the optional caption is absent at every depth.
+        self::assertArrayHasKey('field_slides', $values);
+        self::assertIsString($values['field_slides'][0]['heading']);
+        self::assertArrayNotHasKey('caption', $values['field_slides'][0]);
+    }
+
     public function testSameSeedProducesIdenticalValues(): void
     {
         $factory = new VictualsFactory();
@@ -122,6 +145,7 @@ final class AcfValueGeneratorTest extends TestCase
             'location' => [
                 [['param' => 'post_type', 'operator' => '==', 'value' => 'event']],
                 [['param' => 'page_template', 'operator' => '==', 'value' => 'page-templates/contact-page.php']],
+                [['param' => 'options_page', 'operator' => '==', 'value' => 'site-options']],
                 [['param' => 'post_status', 'operator' => '==', 'value' => 'publish']],
             ],
         ]));
@@ -135,6 +159,7 @@ final class AcfValueGeneratorTest extends TestCase
         self::assertSame([
             ['param' => 'post_type', 'value' => 'event'],
             ['param' => 'page_template', 'value' => 'page-templates/contact-page.php'],
+            ['param' => 'options_page', 'value' => 'site-options'],
         ], AcfJson::targets($groups[0]));
     }
 }

@@ -21,11 +21,13 @@ final class MusterContextTest extends TestCase
 
     public function testVictualsForSeedReturnsFreshSeededInstances(): void
     {
+        // Sequential draws: Faker seeding is global-stream, so each seeded
+        // instance's values must be drawn before the next is created.
         $context = new MusterContext(new VictualsFactory(), seed: 100);
 
-        $a = $context->victualsForSeed(1978);
-        $b = $context->victualsForSeed(1978);
+        $first = $context->victualsForSeed(1978)->headline();
+        $second = $context->victualsForSeed(1978)->headline();
 
-        self::assertSame($a->headline(), $b->headline());
+        self::assertSame($first, $second);
     }
 }

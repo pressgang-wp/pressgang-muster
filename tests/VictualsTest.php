@@ -9,18 +9,22 @@ final class VictualsTest extends TestCase
 {
     public function testSeededOutputIsDeterministic(): void
     {
-        $factory = new VictualsFactory();
+        // Faker's seed() drives PHP's GLOBAL mt_rand stream, so determinism
+        // holds per sequence, not per coexisting instance: draw each
+        // instance's values fully before creating the next, mirroring how
+        // Muster actually consumes Victuals (one context, sequential draws).
+        $draw = static function (): array {
+            $victuals = (new VictualsFactory())->make(1978);
 
-        $a = $factory->make(1978);
-        $b = $factory->make(1978);
+            return [
+                $victuals->headline(),
+                $victuals->sentence(9),
+                $victuals->paragraphs(2),
+                $victuals->dateBetween('-10 days', '+10 days')->format('Y-m-d H:i:s'),
+            ];
+        };
 
-        self::assertSame($a->headline(), $b->headline());
-        self::assertSame($a->sentence(9), $b->sentence(9));
-        self::assertSame($a->paragraphs(2), $b->paragraphs(2));
-        self::assertSame(
-            $a->dateBetween('-10 days', '+10 days')->format('Y-m-d H:i:s'),
-            $b->dateBetween('-10 days', '+10 days')->format('Y-m-d H:i:s')
-        );
+        self::assertSame($draw(), $draw());
     }
 
     public function testVictualsMethodShapesAreUsable(): void
