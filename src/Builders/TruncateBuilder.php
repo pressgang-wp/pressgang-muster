@@ -26,7 +26,10 @@ final class TruncateBuilder
     }
 
     /**
-     * Permanently delete all posts of a type (any status), including attachments.
+     * Permanently delete all posts of a type (any status).
+     *
+     * Media can be reset the same way: attachments are posts of type
+     * `attachment`, so `->posts('attachment')` clears the media library.
      *
      * See: https://developer.wordpress.org/reference/functions/wp_delete_post/
      *

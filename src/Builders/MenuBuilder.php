@@ -8,17 +8,26 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\MenuRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Support\WpResult;
 
 /**
  * Fluent nav-menu builder with rebuild-on-save semantics.
  *
  * Identity rule: menu name. The menu record is upserted, but its items are
- * deleted and recreated on every save so item order and structure are fully
- * deterministic between runs.
+ * always deleted and recreated on save — declared order and nesting are the
+ * single source of truth, so repeated runs converge on identical menus.
+ *
+ * Nesting: pass `parent:` with the title of a *previously declared* item.
  */
 final class MenuBuilder
 {
     /**
+     * Declared items in insertion order.
+     *
+     * Item spec shape: `type` ('custom'|'post_type'|'taxonomy'), `title`,
+     * `url` (custom only), `object_id` + `object` (object items),
+     * and `parent` (title of an earlier item, or null).
+     *
      * @var array<int, array<string, mixed>>
      */
     private array $items = [];
@@ -39,7 +48,7 @@ final class MenuBuilder
     }
 
     /**
-     * Assign the menu to a registered theme location.
+     * Assign the menu to a registered theme location after save.
      *
      * @param string $location
      * @return self
@@ -56,7 +65,7 @@ final class MenuBuilder
      *
      * @param string $title
      * @param string $url
-     * @param string|null $parent Title of a previously added item to nest under.
+     * @param string|null $parent Title of a previously declared item to nest under.
      * @return self
      */
     public function link(string $title, string $url, ?string $parent = null): self
@@ -71,15 +80,17 @@ final class MenuBuilder
      *
      * @param PostRef|int $post
      * @param string|null $title Optional label override.
-     * @param string|null $parent Title of a previously added item to nest under.
+     * @param string|null $parent Title of a previously declared item to nest under.
+     * @param string|null $postType Required for correct rendering when passing a
+     *     raw ID; inferred automatically from a PostRef.
      * @return self
      */
-    public function postItem(PostRef|int $post, ?string $title = null, ?string $parent = null): self
+    public function postItem(PostRef|int $post, ?string $title = null, ?string $parent = null, ?string $postType = null): self
     {
         $this->items[] = [
             'type' => 'post_type',
             'object_id' => $post instanceof PostRef ? $post->id() : $post,
-            'object' => $post instanceof PostRef ? $post->postType() : null,
+            'object' => $post instanceof PostRef ? $post->postType() : $postType,
             'title' => $title,
             'parent' => $parent,
         ];
@@ -91,9 +102,10 @@ final class MenuBuilder
      * Add a taxonomy-term item.
      *
      * @param TermRef|int $term
-     * @param string|null $taxonomy Required when passing a raw term ID.
+     * @param string|null $taxonomy Required when passing a raw term ID;
+     *     inferred automatically from a TermRef.
      * @param string|null $title Optional label override.
-     * @param string|null $parent Title of a previously added item to nest under.
+     * @param string|null $parent Title of a previously declared item to nest under.
      * @return self
      */
     public function termItem(TermRef|int $term, ?string $taxonomy = null, ?string $title = null, ?string $parent = null): self
@@ -110,18 +122,15 @@ final class MenuBuilder
     }
 
     /**
-     * @return MenuRef
-     *
-     * Menu record is upserted by name via `wp_get_nav_menu_object()` /
-     * `wp_create_nav_menu()`. Existing items are removed, declared items are
-     * recreated in order via `wp_update_nav_menu_item()`, and theme locations
-     * are assigned through the `nav_menu_locations` theme mod.
+     * Upsert the menu, rebuild its items, and assign theme locations.
      *
      * See: https://developer.wordpress.org/reference/functions/wp_create_nav_menu/
      * See: https://developer.wordpress.org/reference/functions/wp_update_nav_menu_item/
      *
+     * @return MenuRef
+     *
      * @throws LogicException If the menu name is empty.
-     * @throws RuntimeException If WordPress runtime functions are unavailable or save fails.
+     * @throws RuntimeException If WordPress runtime functions are unavailable or a save fails.
      */
     public function save(): MenuRef
     {
@@ -143,47 +152,7 @@ final class MenuBuilder
 
         $menuId = $this->upsertMenu();
         $this->deleteExistingItems($menuId);
-
-        $idsByTitle = [];
-        foreach ($this->items as $position => $item) {
-            $parentId = 0;
-            if (is_string($item['parent'] ?? null) && isset($idsByTitle[$item['parent']])) {
-                $parentId = $idsByTitle[$item['parent']];
-            }
-
-            $args = [
-                'menu-item-status' => 'publish',
-                'menu-item-position' => $position + 1,
-                'menu-item-parent-id' => $parentId,
-            ];
-
-            if ($item['type'] === 'custom') {
-                $args['menu-item-type'] = 'custom';
-                $args['menu-item-title'] = (string) $item['title'];
-                $args['menu-item-url'] = (string) $item['url'];
-            } else {
-                $args['menu-item-type'] = (string) $item['type'];
-                $args['menu-item-object-id'] = (int) $item['object_id'];
-                if (!empty($item['object'])) {
-                    $args['menu-item-object'] = (string) $item['object'];
-                }
-                if (!empty($item['title'])) {
-                    $args['menu-item-title'] = (string) $item['title'];
-                }
-            }
-
-            $itemId = wp_update_nav_menu_item($menuId, 0, $args);
-
-            if ((function_exists('is_wp_error') && is_wp_error($itemId)) || !is_int($itemId) || $itemId <= 0) {
-                throw new RuntimeException(sprintf('Failed to save menu item in [%s].', $this->name));
-            }
-
-            $title = (string) ($item['title'] ?? '');
-            if ($title !== '') {
-                $idsByTitle[$title] = $itemId;
-            }
-        }
-
+        $this->createItems($menuId);
         $this->assignLocations($menuId);
 
         $this->context->logger()->debug(
@@ -194,6 +163,8 @@ final class MenuBuilder
     }
 
     /**
+     * Find the menu by name or create it.
+     *
      * @return int
      *
      * @throws RuntimeException If menu creation fails.
@@ -210,14 +181,16 @@ final class MenuBuilder
 
         $menuId = wp_create_nav_menu($this->name);
 
-        if ((function_exists('is_wp_error') && is_wp_error($menuId)) || !is_int($menuId) || $menuId <= 0) {
+        if (!WpResult::isId($menuId)) {
             throw new RuntimeException(sprintf('Failed to create menu [%s].', $this->name));
         }
 
-        return $menuId;
+        return (int) $menuId;
     }
 
     /**
+     * Remove all current items so declared items fully define the menu.
+     *
      * @param int $menuId
      * @return void
      */
@@ -236,6 +209,81 @@ final class MenuBuilder
     }
 
     /**
+     * Create declared items in order, resolving parent titles to item IDs.
+     *
+     * Invariant: a parent must be declared before its children, because
+     * resolution walks the declaration order once.
+     *
+     * @param int $menuId
+     * @return void
+     *
+     * @throws RuntimeException If an item save fails.
+     */
+    private function createItems(int $menuId): void
+    {
+        $idsByTitle = [];
+
+        foreach ($this->items as $position => $item) {
+            $itemId = wp_update_nav_menu_item($menuId, 0, $this->buildItemArgs($item, $position + 1, $idsByTitle));
+
+            if (!WpResult::isId($itemId)) {
+                throw new RuntimeException(sprintf(
+                    'Failed to save menu item [%s] in [%s].',
+                    (string) ($item['title'] ?? $item['url'] ?? $item['object_id'] ?? '?'),
+                    $this->name
+                ));
+            }
+
+            $title = (string) ($item['title'] ?? '');
+            if ($title !== '') {
+                $idsByTitle[$title] = (int) $itemId;
+            }
+        }
+    }
+
+    /**
+     * Translate an item spec into `wp_update_nav_menu_item()` args.
+     *
+     * @param array<string, mixed> $item
+     * @param int $position 1-based menu position.
+     * @param array<string, int> $idsByTitle Item IDs created so far, keyed by title.
+     * @return array<string, mixed>
+     */
+    private function buildItemArgs(array $item, int $position, array $idsByTitle): array
+    {
+        $parent = $item['parent'] ?? null;
+
+        $args = [
+            'menu-item-status' => 'publish',
+            'menu-item-position' => $position,
+            'menu-item-parent-id' => is_string($parent) ? ($idsByTitle[$parent] ?? 0) : 0,
+        ];
+
+        if ($item['type'] === 'custom') {
+            $args['menu-item-type'] = 'custom';
+            $args['menu-item-title'] = (string) $item['title'];
+            $args['menu-item-url'] = (string) $item['url'];
+
+            return $args;
+        }
+
+        $args['menu-item-type'] = (string) $item['type'];
+        $args['menu-item-object-id'] = (int) $item['object_id'];
+
+        if (!empty($item['object'])) {
+            $args['menu-item-object'] = (string) $item['object'];
+        }
+
+        if (!empty($item['title'])) {
+            $args['menu-item-title'] = (string) $item['title'];
+        }
+
+        return $args;
+    }
+
+    /**
+     * Point declared theme locations at this menu via the `nav_menu_locations` theme mod.
+     *
      * @param int $menuId
      * @return void
      */

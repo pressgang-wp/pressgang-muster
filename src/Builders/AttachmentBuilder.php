@@ -6,13 +6,18 @@ use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Support\WpResult;
 
 /**
  * Fluent media builder with idempotent-upsert intent.
  *
- * Sources: an existing file copied into the uploads directory, or a
- * deterministic generated placeholder image (colour derived from the slug,
- * so the same slug always produces the same image).
+ * Sources: an existing file copied into the uploads directory, or a generated
+ * placeholder image. Placeholders are deterministic — the fill colour derives
+ * from the slug — so the same slug always yields the same image and visual
+ * snapshots stay stable between runs.
+ *
+ * Identity rule: `attachment + post_name` (slug). Existing attachments are
+ * reused without regenerating their file.
  */
 final class AttachmentBuilder
 {
@@ -63,7 +68,7 @@ final class AttachmentBuilder
      *
      * @param int $width
      * @param int $height
-     * @param string|null $label Optional text rendered onto the image.
+     * @param string|null $label Text rendered onto the image; defaults to the slug.
      * @return self
      */
     public function placeholder(int $width = 1200, int $height = 800, ?string $label = null): self
@@ -88,6 +93,8 @@ final class AttachmentBuilder
     }
 
     /**
+     * Set the image's alt text (`_wp_attachment_image_alt`).
+     *
      * @param string $alt
      * @return self
      */
@@ -125,18 +132,14 @@ final class AttachmentBuilder
     }
 
     /**
-     * @return PostRef
-     *
-     * Identity rule: `attachment + post_name` (slug). Existing attachments are
-     * reused without regenerating the file; missing ones get their source file
-     * written into the uploads dir and registered via `wp_insert_attachment()`
-     * with generated metadata where the image API is available.
+     * Upsert the attachment and apply alt text and featured-image assignments.
      *
      * See: https://developer.wordpress.org/reference/functions/wp_insert_attachment/
-     * See: https://developer.wordpress.org/reference/functions/wp_generate_attachment_metadata/
+     *
+     * @return PostRef Always with post type `attachment`.
      *
      * @throws LogicException If no source is configured.
-     * @throws RuntimeException If WordPress runtime functions are unavailable or save fails.
+     * @throws RuntimeException If WordPress runtime functions are unavailable or the save fails.
      */
     public function save(): PostRef
     {
@@ -156,20 +159,10 @@ final class AttachmentBuilder
             throw new RuntimeException('WordPress runtime functions are required to save attachments.');
         }
 
-        $existing = get_posts([
-            'name' => $this->slug,
-            'post_type' => 'attachment',
-            'post_status' => 'any',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'suppress_filters' => true,
-            'no_found_rows' => true,
-        ]);
+        $attachmentId = $this->findExistingId();
+        $action = 'reused';
 
-        if (!empty($existing)) {
-            $attachmentId = (int) $existing[0];
-            $action = 'reused';
-        } else {
+        if ($attachmentId === null) {
             $attachmentId = $this->insertAttachment();
             $action = 'created';
         }
@@ -179,8 +172,7 @@ final class AttachmentBuilder
         }
 
         if ($this->featuredOn !== null && function_exists('set_post_thumbnail')) {
-            $postId = $this->featuredOn instanceof PostRef ? $this->featuredOn->id() : $this->featuredOn;
-            set_post_thumbnail($postId, $attachmentId);
+            set_post_thumbnail($this->resolvePostId($this->featuredOn), $attachmentId);
         }
 
         $this->context->logger()->debug(
@@ -191,11 +183,62 @@ final class AttachmentBuilder
     }
 
     /**
+     * Look up an existing attachment by slug.
+     *
+     * @return int|null
+     */
+    private function findExistingId(): ?int
+    {
+        $existing = get_posts([
+            'name' => $this->slug,
+            'post_type' => 'attachment',
+            'post_status' => 'any',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'suppress_filters' => true,
+            'no_found_rows' => true,
+        ]);
+
+        return empty($existing) ? null : (int) $existing[0];
+    }
+
+    /**
+     * Write the source file into uploads and register the attachment post.
+     *
      * @return int
      *
-     * @throws RuntimeException If the file cannot be written or insert fails.
+     * @throws RuntimeException If the file cannot be written or the insert fails.
      */
     private function insertAttachment(): int
+    {
+        $file = $this->resolveTargetPath();
+        $this->writeSourceFile($file);
+
+        /** @var int|\WP_Error $attachmentId */
+        $attachmentId = wp_insert_attachment([
+            'post_title' => $this->title ?? $this->slug,
+            'post_name' => $this->slug,
+            'post_mime_type' => $this->detectMimeType($file),
+            'post_status' => 'inherit',
+        ], $file, $this->parent === null ? 0 : $this->resolvePostId($this->parent), true);
+
+        if (!WpResult::isId($attachmentId)) {
+            throw new RuntimeException(sprintf('Failed to save attachment [%s].', $this->slug));
+        }
+
+        $this->generateMetadata((int) $attachmentId, $file);
+
+        return (int) $attachmentId;
+    }
+
+    /**
+     * Build the destination path inside the uploads directory.
+     *
+     * @return string
+     *
+     * @throws RuntimeException If the uploads directory is not writable.
+     */
+    private function resolveTargetPath(): string
     {
         $uploads = wp_upload_dir();
         $dir = (string) ($uploads['path'] ?? '');
@@ -204,45 +247,60 @@ final class AttachmentBuilder
             throw new RuntimeException('Uploads directory is not writable.');
         }
 
-        $file = rtrim($dir, '/') . '/' . $this->slug . ($this->placeholder ? '.png' : '.' . pathinfo((string) $this->sourcePath, PATHINFO_EXTENSION));
-
         if ($this->placeholder) {
-            $this->writePlaceholder($file);
+            $extension = 'png';
         } else {
-            if (!is_readable((string) $this->sourcePath) || !copy((string) $this->sourcePath, $file)) {
-                throw new RuntimeException(sprintf('Attachment source [%s] is not readable.', (string) $this->sourcePath));
-            }
+            $extension = strtolower(pathinfo((string) $this->sourcePath, PATHINFO_EXTENSION));
+            $extension = $extension === '' ? 'bin' : $extension;
         }
 
-        $parentId = 0;
-        if ($this->parent !== null) {
-            $parentId = $this->parent instanceof PostRef ? $this->parent->id() : $this->parent;
-        }
-
-        $mime = $this->placeholder ? 'image/png' : (function_exists('wp_check_filetype')
-            ? (string) (wp_check_filetype($file)['type'] ?? 'application/octet-stream')
-            : 'application/octet-stream');
-
-        /** @var int|\WP_Error $attachmentId */
-        $attachmentId = wp_insert_attachment([
-            'post_title' => $this->title ?? $this->slug,
-            'post_name' => $this->slug,
-            'post_mime_type' => $mime,
-            'post_status' => 'inherit',
-        ], $file, $parentId, true);
-
-        if ((function_exists('is_wp_error') && is_wp_error($attachmentId)) || !is_int($attachmentId) || $attachmentId <= 0) {
-            throw new RuntimeException(sprintf('Failed to save attachment [%s].', $this->slug));
-        }
-
-        $this->generateMetadata($attachmentId, $file);
-
-        return $attachmentId;
+        return rtrim($dir, '/') . '/' . $this->slug . '.' . $extension;
     }
 
     /**
-     * Write a deterministic PNG: solid colour derived from the slug hash,
-     * with an optional label when GD's font support is available.
+     * Produce the file contents: copy the configured source, or generate a placeholder.
+     *
+     * @param string $file
+     * @return void
+     *
+     * @throws RuntimeException If the source is unreadable or the write fails.
+     */
+    private function writeSourceFile(string $file): void
+    {
+        if ($this->placeholder) {
+            $this->writePlaceholder($file);
+
+            return;
+        }
+
+        if (!is_readable((string) $this->sourcePath) || !copy((string) $this->sourcePath, $file)) {
+            throw new RuntimeException(sprintf('Attachment source [%s] is not readable.', (string) $this->sourcePath));
+        }
+    }
+
+    /**
+     * @param string $file
+     * @return string
+     */
+    private function detectMimeType(string $file): string
+    {
+        if ($this->placeholder) {
+            return 'image/png';
+        }
+
+        if (function_exists('wp_check_filetype')) {
+            return (string) (wp_check_filetype($file)['type'] ?? 'application/octet-stream');
+        }
+
+        return 'application/octet-stream';
+    }
+
+    /**
+     * Write a deterministic PNG: a solid colour derived from the slug hash,
+     * labelled when GD is available.
+     *
+     * Falls back to a minimal valid 1×1 PNG without GD so runs stay deterministic
+     * in stripped-down environments.
      *
      * @param string $file
      * @return void
@@ -255,9 +313,7 @@ final class AttachmentBuilder
             $image = imagecreatetruecolor(max(1, $this->width), max(1, $this->height));
             [$r, $g, $b] = $this->colourFromSlug();
             imagefilledrectangle($image, 0, 0, $this->width, $this->height, imagecolorallocate($image, $r, $g, $b));
-
-            $label = $this->label ?? $this->slug;
-            imagestring($image, 5, 12, 12, $label, imagecolorallocate($image, 255, 255, 255));
+            imagestring($image, 5, 12, 12, $this->label ?? $this->slug, imagecolorallocate($image, 255, 255, 255));
 
             $written = imagepng($image, $file);
             imagedestroy($image);
@@ -267,7 +323,6 @@ final class AttachmentBuilder
             }
         }
 
-        // GD unavailable: fall back to a minimal valid 1x1 PNG so runs stay deterministic.
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
         if (file_put_contents($file, (string) $png) === false) {
             throw new RuntimeException('Failed to write placeholder image.');
@@ -275,6 +330,9 @@ final class AttachmentBuilder
     }
 
     /**
+     * Derive stable mid-range RGB channels (50–177) from the slug, keeping the
+     * white label legible on every generated colour.
+     *
      * @return array{0: int, 1: int, 2: int}
      */
     private function colourFromSlug(): array
@@ -289,6 +347,20 @@ final class AttachmentBuilder
     }
 
     /**
+     * @param PostRef|int $post
+     * @return int
+     */
+    private function resolvePostId(PostRef|int $post): int
+    {
+        return $post instanceof PostRef ? $post->id() : $post;
+    }
+
+    /**
+     * Generate and store attachment metadata where the image API is available,
+     * loading `wp-admin/includes/image.php` on demand outside admin requests.
+     *
+     * See: https://developer.wordpress.org/reference/functions/wp_generate_attachment_metadata/
+     *
      * @param int $attachmentId
      * @param string $file
      * @return void

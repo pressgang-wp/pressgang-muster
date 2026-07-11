@@ -9,6 +9,9 @@ namespace PressGang\Muster\Adapters;
  * scalars, post/term/user IDs for relational fields, arrays of row arrays for
  * repeaters, and keyed arrays for groups.
  *
+ * Invariant: when ACF is inactive this degrades to a silent no-op, matching
+ * `NullAcfAdapter` semantics, so seed runs never fail on a missing plugin.
+ *
  * See: https://www.advancedcustomfields.com/resources/update_field/
  */
 final class LiveAcfAdapter implements AcfAdapterInterface
