@@ -106,6 +106,20 @@ final class PostBuilder
     }
 
     /**
+     * Pin the publish date — fixture dates must be deterministic or every
+     * rendered date (and visual snapshot) drifts with the seeding run.
+     *
+     * @param string $date MySQL datetime, e.g. '2026-01-01 09:00:00'.
+     * @return self
+     */
+    public function date(string $date): self
+    {
+        $this->payload['post_date'] = $date;
+
+        return $this;
+    }
+
+    /**
      * @param string $template
      * @return self
      */
@@ -217,6 +231,13 @@ final class PostBuilder
         $author = $this->resolveAuthorId($this->payload['post_author'] ?? null);
         if ($author !== null) {
             $attributes['post_author'] = $author;
+        }
+
+        if (isset($this->payload['post_date'])) {
+            $attributes['post_date'] = (string) $this->payload['post_date'];
+            // Without edit_date, wp_update_post ignores post_date changes on
+            // existing posts — upserted fixtures must re-pin their date too.
+            $attributes['edit_date'] = true;
         }
 
         /** @var int|\WP_Error $saveResult */
