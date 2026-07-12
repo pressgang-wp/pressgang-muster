@@ -253,7 +253,14 @@ final class PostBuilder
         }
 
         if ((function_exists('is_wp_error') && is_wp_error($saveResult)) || !is_int($saveResult) || $saveResult <= 0) {
-            throw new RuntimeException('Failed to save post.');
+            // Surface WordPress's own reason — a bare "failed" hides exactly
+            // the detail (invalid date, bad author, DB error) a fixture
+            // author needs to fix their Muster.
+            $reason = (function_exists('is_wp_error') && is_wp_error($saveResult))
+                ? $saveResult->get_error_message()
+                : var_export($saveResult, true);
+
+            throw new RuntimeException(sprintf('Failed to save post [%s:%s]: %s', $this->postType, $slug, $reason));
         }
 
         $postId = $saveResult;

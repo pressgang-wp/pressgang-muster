@@ -7,6 +7,11 @@ namespace {
             public function __construct(public string $message = 'error')
             {
             }
+
+            public function get_error_message(): string
+            {
+                return $this->message;
+            }
         }
     }
 
@@ -569,6 +574,27 @@ namespace {
         }
     }
 
+    if (!function_exists('wp_get_environment_type')) {
+        function wp_get_environment_type(): string
+        {
+            return $GLOBALS['__muster_wp_environment'] ?? 'local';
+        }
+    }
+
+    if (!function_exists('get_child_theme_namespace')) {
+        function get_child_theme_namespace(): ?string
+        {
+            return $GLOBALS['__muster_child_namespace'] ?? 'TestTheme';
+        }
+    }
+
+    if (!function_exists('get_stylesheet_directory')) {
+        function get_stylesheet_directory(): string
+        {
+            return $GLOBALS['__muster_stylesheet_dir'] ?? sys_get_temp_dir() . '/muster-theme';
+        }
+    }
+
     if (!function_exists('wp_delete_term')) {
         function wp_delete_term(int $termId, string $taxonomy): mixed
         {
@@ -622,5 +648,9 @@ namespace PressGang\Muster\Tests {
         $GLOBALS['__muster_wp_thumbnails'] = [];
         $GLOBALS['__muster_wp_attachment_files'] = [];
         $GLOBALS['__muster_wp_upload_dir'] = sys_get_temp_dir() . '/muster-uploads-' . getmypid();
+
+        $GLOBALS['__muster_wp_environment'] = 'local';
+        $GLOBALS['__muster_child_namespace'] = 'TestTheme';
+        $GLOBALS['__muster_stylesheet_dir'] = sys_get_temp_dir() . '/muster-theme-' . getmypid();
     }
 }

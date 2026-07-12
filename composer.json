@@ -13,7 +13,10 @@
   "autoload": {
     "psr-4": {
       "PressGang\\Muster\\": "src/"
-    }
+    },
+    "files": [
+      "src/Cli/bootstrap.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {

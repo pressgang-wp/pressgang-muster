@@ -3,6 +3,9 @@
 namespace PressGang\Muster;
 
 use BadMethodCallException;
+use PressGang\Muster\Acf\AcfValueGenerator;
+use PressGang\Muster\Acf\ContextProviders;
+use PressGang\Muster\Acf\ThemeAcf;
 use PressGang\Muster\Builders\AttachmentBuilder;
 use PressGang\Muster\Builders\MenuBuilder;
 use PressGang\Muster\Builders\OptionBuilder;
@@ -118,6 +121,30 @@ abstract class Muster
     public function truncate(): TruncateBuilder
     {
         return new TruncateBuilder($this->context);
+    }
+
+    /**
+     * Generated ACF values for every field group targeting $target, derived
+     * from the active theme's acf-json — media and relational fields are
+     * backed by real fixture objects (placeholder attachments, stub posts
+     * and terms) created through this Muster's context.
+     *
+     * Feed the result straight to a builder:
+     *
+     *     $this->post('event')->title(…)->acf($this->acfFor('event'))->save();
+     *
+     * Values draw from the seeded Victuals stream, so successive calls vary
+     * naturally while the run as a whole stays deterministic.
+     *
+     * @param string $target A post type slug or page template path.
+     * @param string $variant `populated` (every field) or `minimal` (required only).
+     * @return array<string, mixed>
+     */
+    public function acfFor(string $target, string $variant = 'populated'): array
+    {
+        $generator = new AcfValueGenerator($this->victuals(), ContextProviders::wire($this->context));
+
+        return ThemeAcf::valuesFor($target, $generator, $variant);
     }
 
     /**
