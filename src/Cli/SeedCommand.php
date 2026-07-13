@@ -20,6 +20,7 @@ namespace PressGang\Muster\Cli;
  * - `--fresh` deletes only resources recorded as owned by the selected Muster
  *   before seeding.
  * - Every invocation plans first; `--dry-run` skips the application pass.
+ * - `--only` selects named declaration groups.
  * - `--format=json` emits one machine-readable reconciliation payload.
  * - Remaining flags behave exactly as in `wp capstan muster`.
  */

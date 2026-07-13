@@ -18,6 +18,23 @@ final class RecordingSiteMuster extends Muster
     }
 }
 
+/**
+ * Test double with independently selectable declaration groups.
+ */
+final class GroupedRecordingSiteMuster extends Muster
+{
+    public function run(): void
+    {
+        $this->group('selected', function (): void {
+            $this->page()->key('page:selected')->title('Selected')->slug('selected')->save();
+        });
+
+        $this->group('other', function (): void {
+            $this->page()->key('page:other')->title('Other')->slug('other')->save();
+        });
+    }
+}
+
 final class SeedCommandTest extends TestCase
 {
     protected function setUp(): void
@@ -67,6 +84,19 @@ final class SeedCommandTest extends TestCase
         self::assertSame(['run', 'run'], $GLOBALS['__muster_seed_calls']);
         self::assertContains('  Summary: create=1 update=0 keep=0 prune=1 conflict=0', $GLOBALS['__muster_wp_cli_lines']);
         self::assertCount(1, $GLOBALS['__muster_wp_posts']);
+    }
+
+    public function testFreshOnlyResetsFullScopeThenRebuildsSelectedGroups(): void
+    {
+        SeedCommand::handle([GroupedRecordingSiteMuster::class], []);
+
+        SeedCommand::handle([GroupedRecordingSiteMuster::class], [
+            'fresh' => true,
+            'only' => 'selected',
+        ]);
+
+        self::assertCount(1, $GLOBALS['__muster_wp_posts']);
+        self::assertSame('selected', reset($GLOBALS['__muster_wp_posts'])['post_name']);
     }
 
     public function testRunsWithoutFreshByDefault(): void

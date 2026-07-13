@@ -96,7 +96,7 @@ namespace PressGang\Muster\Tests {
         }
     }
 
-        public function testOnlyFilterSkipsPatternsNotInList(): void
+        public function testOnlyFilterSkipsDeclarationGroupsNotInList(): void
         {
             $GLOBALS['__muster_cli_test_run_count'] = 0;
             $GLOBALS['__muster_cli_test_pattern_counter'] = 0;
@@ -128,6 +128,7 @@ namespace PressGang\Muster\Tests {
             self::assertSame('applied', $payload['status']);
             self::assertSame(1, $payload['plan']['summary']['create']);
             self::assertSame(1, $payload['apply']['summary']['create']);
+            self::assertSame('allowed', $payload['plan']['operations'][0]['group']);
         }
 
         public function testDryRunJsonContainsPlanOnly(): void
@@ -144,6 +145,29 @@ namespace PressGang\Muster\Tests {
             self::assertSame('planned', $payload['status']);
             self::assertNull($payload['apply']);
             self::assertCount(0, $GLOBALS['__muster_wp_posts']);
+        }
+
+        public function testUnknownOnlyGroupIsAStructuredConflict(): void
+        {
+            try {
+                MusterCommand::handle([TestMusterForCli::class], [
+                    'only' => 'missing',
+                    'format' => 'json',
+                ]);
+                self::fail('Expected conflict exit.');
+            } catch (WP_CLI_ExitException $error) {
+                self::assertSame('halt:1', $error->getMessage());
+            }
+
+            self::assertCount(1, $GLOBALS['__muster_wp_cli_lines']);
+            $payload = json_decode($GLOBALS['__muster_wp_cli_lines'][0], true, 512, JSON_THROW_ON_ERROR);
+
+            self::assertSame('conflict', $payload['status']);
+            self::assertSame(1, $payload['plan']['summary']['conflict']);
+            self::assertStringContainsString(
+                'Unknown Muster group requested by --only: missing.',
+                $payload['plan']['operations'][0]['message']
+            );
         }
 
         public function testJsonConflictStillEmitsOnlyStructuredPayload(): void
@@ -171,16 +195,20 @@ namespace PressGang\Muster\Tests {
         {
             $GLOBALS['__muster_cli_test_run_count'] = (int) ($GLOBALS['__muster_cli_test_run_count'] ?? 0) + 1;
 
-            $this->pattern('allowed')->count(1)->build(function (int $i) {
-                $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 1;
+            $this->group('allowed', function (): void {
+                $this->pattern('allowed')->count(1)->build(function (int $i) {
+                    $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 1;
 
-                return $this->post('event')->key('allowed-' . $i)->title('A')->slug('allowed-' . $i);
+                    return $this->post('event')->key('allowed-' . $i)->title('A')->slug('allowed-' . $i);
+                });
             });
 
-            $this->pattern('blocked')->count(1)->build(function (int $i) {
-                $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 100;
+            $this->group('blocked', function (): void {
+                $this->pattern('blocked')->count(1)->build(function (int $i) {
+                    $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 100;
 
-                return $this->post('event')->key('blocked-' . $i)->title('B')->slug('blocked-' . $i);
+                    return $this->post('event')->key('blocked-' . $i)->title('B')->slug('blocked-' . $i);
+                });
             });
         }
     }

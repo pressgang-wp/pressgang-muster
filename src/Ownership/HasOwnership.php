@@ -120,7 +120,8 @@ trait HasOwnership
                 $intent['key'],
                 $owned->locator(),
                 $owned->id(),
-                $error->getMessage()
+                $error->getMessage(),
+                $context->activeGroup()
             ));
 
             throw $error;
@@ -161,7 +162,8 @@ trait HasOwnership
                 $intent['key'],
                 $locator,
                 $id,
-                $error->getMessage()
+                $error->getMessage(),
+                $context->activeGroup()
             ));
 
             throw $error;
@@ -217,7 +219,8 @@ trait HasOwnership
             $intent['scope'],
             $intent['key'],
             $locator,
-            $id
+            $id,
+            group: $context->activeGroup()
         ));
     }
 
@@ -247,7 +250,8 @@ trait HasOwnership
             $intent['key'],
             $locator,
             $id,
-            $message
+            $message,
+            $context->activeGroup()
         ));
 
         throw new OwnershipConflict($message);

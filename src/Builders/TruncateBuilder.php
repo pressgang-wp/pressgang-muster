@@ -132,7 +132,8 @@ final class TruncateBuilder
             $resource->scope(),
             $resource->key(),
             $resource->locator(),
-            $resource->id()
+            $resource->id(),
+            group: $this->context->activeGroup()
         ));
     }
 }

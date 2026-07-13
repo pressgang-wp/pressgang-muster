@@ -210,7 +210,8 @@ final class OwnershipRegistry
             $resource->scope(),
             $resource->key(),
             $resource->locator(),
-            $resource->id()
+            $resource->id(),
+            group: $this->context->activeGroup()
         ));
     }
 

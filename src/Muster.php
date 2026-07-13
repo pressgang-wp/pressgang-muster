@@ -37,6 +37,30 @@ abstract class Muster
     abstract public function run(): void;
 
     /**
+     * Declare a named, independently selectable section of a Muster scenario.
+     *
+     * `--only=<name>` invokes callbacks for matching groups and does not invoke
+     * skipped callbacks at all, so skipped declarations perform no WordPress
+     * reads, writes, or fake-data generation. Groups cannot be nested or repeated.
+     *
+     * @param string $name Stable group name exposed to the CLI.
+     * @param callable(): void $declarations Declarations to evaluate when selected.
+     * @return void
+     */
+    public function group(string $name, callable $declarations): void
+    {
+        if (!$this->context->enterGroup($name)) {
+            return;
+        }
+
+        try {
+            $declarations();
+        } finally {
+            $this->context->leaveGroup();
+        }
+    }
+
+    /**
      * Start a post builder for a given post type.
      *
      * The builder must receive `key()` before `save()`.
@@ -46,6 +70,8 @@ abstract class Muster
      */
     public function post(string $postType = 'post'): PostBuilder
     {
+        $this->context->assertDeclarationAllowed('Post builder');
+
         return new PostBuilder($this->context, $postType, ownershipScope: static::class);
     }
 
@@ -68,6 +94,8 @@ abstract class Muster
      */
     public function term(string $taxonomy, ?string $name = null): TermBuilder
     {
+        $this->context->assertDeclarationAllowed('Term builder');
+
         return new TermBuilder($this->context, $taxonomy, $name, static::class);
     }
 
@@ -79,6 +107,8 @@ abstract class Muster
      */
     public function user(?string $login = null): UserBuilder
     {
+        $this->context->assertDeclarationAllowed('User builder');
+
         return new UserBuilder($this->context, $login, static::class);
     }
 
@@ -90,6 +120,8 @@ abstract class Muster
      */
     public function option(string $key): OptionBuilder
     {
+        $this->context->assertDeclarationAllowed('Option builder');
+
         return new OptionBuilder($this->context, $key, static::class);
     }
 
@@ -101,6 +133,8 @@ abstract class Muster
      */
     public function menu(string $name): MenuBuilder
     {
+        $this->context->assertDeclarationAllowed('Menu builder');
+
         return new MenuBuilder($this->context, $name, static::class);
     }
 
@@ -112,6 +146,8 @@ abstract class Muster
      */
     public function attachment(string $slug): AttachmentBuilder
     {
+        $this->context->assertDeclarationAllowed('Attachment builder');
+
         return new AttachmentBuilder($this->context, $slug, static::class);
     }
 
@@ -122,6 +158,8 @@ abstract class Muster
      */
     public function truncate(): TruncateBuilder
     {
+        $this->context->assertDeclarationAllowed('Truncate builder');
+
         return new TruncateBuilder($this->context);
     }
 
@@ -129,12 +167,15 @@ abstract class Muster
      * Permanently delete every resource owned by this concrete Muster.
      *
      * Unlike `truncate()`, this never selects resources merely because they
-     * share a post type or taxonomy.
+     * share a post type or taxonomy. As a declaration, it is rejected during
+     * partial `--only` runs; CLI `--fresh --only` is a separate lifecycle reset.
      *
      * @return int Number of owned resources selected for deletion.
      */
     public function resetOwned(): int
     {
+        $this->context->assertCompleteRun('resetOwned()');
+
         return $this->context->ownership()->reset(static::class);
     }
 
@@ -142,14 +183,16 @@ abstract class Muster
      * Delete owned resources not touched by the current successful run.
      *
      * Explicit keep keys may preserve conditional resources not declared in
-     * this run. Use after a complete run, not a partial `--only` run. Deletion
-     * is immediate until the future plan/apply lifecycle makes the diff visible.
+     * this run. The operation participates in plan/apply and is rejected during
+     * a partial `--only` run, where skipped keys cannot be classified as stale.
      *
      * @param array<int, string> $keepKeys Additional logical keys to retain.
      * @return int Number of stale resources selected for deletion.
      */
     public function pruneOwned(array $keepKeys = []): int
     {
+        $this->context->assertCompleteRun('pruneOwned()');
+
         return $this->context->ownership()->prune(static::class, $keepKeys);
     }
 
@@ -172,6 +215,8 @@ abstract class Muster
      */
     public function acfFor(string $target, string $variant = 'populated'): array
     {
+        $this->context->assertDeclarationAllowed('ACF fixture generation');
+
         $generator = new AcfValueGenerator(
             $this->victuals(),
             ContextProviders::wire($this->context, static::class)
@@ -190,6 +235,8 @@ abstract class Muster
      */
     public function victuals(): Victuals
     {
+        $this->context->assertDeclarationAllowed('Victuals generation');
+
         if ($this->patternVictuals !== null) {
             return $this->patternVictuals;
         }
@@ -205,6 +252,8 @@ abstract class Muster
      */
     public function pattern(string $name): Pattern
     {
+        $this->context->assertDeclarationAllowed('Pattern');
+
         return new Pattern($name, $this->context, $this);
     }
 

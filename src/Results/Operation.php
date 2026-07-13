@@ -15,6 +15,7 @@ final class Operation
      * @param string $locator
      * @param int $id
      * @param string|null $message
+     * @param string|null $group Named declaration group that produced the operation.
      */
     public function __construct(
         private OperationAction $action,
@@ -24,6 +25,7 @@ final class Operation
         private string $locator,
         private int $id = 0,
         private ?string $message = null,
+        private ?string $group = null,
     ) {
     }
 
@@ -33,13 +35,14 @@ final class Operation
     }
 
     /**
-     * @return array{action: string, resource: string, scope: string, key: string, locator: string, id: int, message: string|null}
+     * @return array{action: string, resource: string, group: string|null, scope: string, key: string, locator: string, id: int, message: string|null}
      */
     public function toArray(): array
     {
         return [
             'action' => $this->action->value,
             'resource' => $this->resource,
+            'group' => $this->group,
             'scope' => $this->scope,
             'key' => $this->key,
             'locator' => $this->locator,

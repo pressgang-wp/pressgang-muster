@@ -45,7 +45,7 @@ final class Invoker
             acf: function_exists('update_field') ? new \PressGang\Muster\Adapters\LiveAcfAdapter() : null,
             seed: isset($assocArgs['seed']) ? (int) $assocArgs['seed'] : null,
             dryRun: $dryRun ?? isset($assocArgs['dry-run']),
-            onlyPatterns: $only,
+            onlyGroups: $only,
         );
     }
 
@@ -117,9 +117,13 @@ final class Invoker
         try {
             $muster = self::makeMuster($musterClass, $context);
             if ($fresh) {
-                $muster->resetOwned();
+                // `--fresh --only` intentionally resets the complete ownership
+                // scope before selected groups run. This lifecycle reset is not
+                // equivalent to a resetOwned() declaration inside run().
+                $context->ownership()->reset($musterClass);
             }
             $muster->run();
+            $context->assertOnlyGroupsResolved();
 
             return null;
         } catch (\Throwable $error) {
@@ -147,9 +151,10 @@ final class Invoker
             $row = $operation->toArray();
             $identity = $row['key'] !== '' ? $row['key'] : $row['locator'];
             $message = sprintf(
-                '  %-8s %-10s %s%s',
+                '  %-8s %-10s %s%s%s',
                 strtoupper((string) $row['action']),
                 (string) $row['resource'],
+                is_string($row['group']) && $row['group'] !== '' ? '[' . $row['group'] . '] ' : '',
                 (string) $identity,
                 $row['locator'] !== '' && $row['locator'] !== $identity ? ' -> ' . $row['locator'] : ''
             );
