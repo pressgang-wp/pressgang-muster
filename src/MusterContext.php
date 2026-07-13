@@ -42,6 +42,16 @@ final class MusterContext
     private array $plannedDeletions = [];
 
     /**
+     * @var array<int, class-string<Muster>>
+     */
+    private array $musterCallStack = [];
+
+    /**
+     * @var array<class-string<Muster>, true>
+     */
+    private array $completedMusterCalls = [];
+
+    /**
      * @param VictualsFactory $victualsFactory
      * @param LoggerInterface|null $logger
      * @param AcfAdapterInterface|null $acf
@@ -396,5 +406,67 @@ final class MusterContext
             implode(', ', $unknown),
             $guidance
         ));
+    }
+
+    /**
+     * Enter one explicit dependency edge in a chained Muster graph.
+     *
+     * @param class-string<Muster> $caller
+     * @param class-string<Muster> $target
+     * @return void
+     */
+    public function enterMusterCall(string $caller, string $target): void
+    {
+        if ($this->musterCallStack === []) {
+            $this->musterCallStack[] = $caller;
+        }
+
+        $active = $this->musterCallStack[array_key_last($this->musterCallStack)];
+        if ($active !== $caller) {
+            throw new LogicException(sprintf(
+                'Muster call stack expected caller [%s], received [%s].',
+                $active,
+                $caller
+            ));
+        }
+
+        if (in_array($target, $this->musterCallStack, true)) {
+            throw new LogicException(sprintf(
+                'Recursive Muster call detected: %s.',
+                implode(' -> ', [...$this->musterCallStack, $target])
+            ));
+        }
+
+        if (isset($this->completedMusterCalls[$target])) {
+            throw new LogicException(sprintf(
+                'Muster [%s] was called more than once in the same execution pass.',
+                $target
+            ));
+        }
+
+        $this->musterCallStack[] = $target;
+    }
+
+    /**
+     * Leave a chained Muster and record successful completion.
+     *
+     * @param class-string<Muster> $target
+     * @param bool $completed
+     * @return void
+     */
+    public function leaveMusterCall(string $target, bool $completed): void
+    {
+        $active = array_pop($this->musterCallStack);
+        if ($active !== $target) {
+            throw new LogicException(sprintf(
+                'Cannot leave Muster [%s]; active call is [%s].',
+                $target,
+                (string) $active
+            ));
+        }
+
+        if ($completed) {
+            $this->completedMusterCalls[$target] = true;
+        }
     }
 }

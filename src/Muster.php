@@ -5,6 +5,7 @@ namespace PressGang\Muster;
 use BadMethodCallException;
 use DateTimeImmutable;
 use DateTimeInterface;
+use LogicException;
 use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Acf\AcfValueGenerator;
 use PressGang\Muster\Acf\ContextProviders;
@@ -82,6 +83,55 @@ abstract class Muster
             $declarations();
         } finally {
             $this->context->leaveGroup();
+        }
+    }
+
+    /**
+     * Run dependent Muster classes in the declared order using this context.
+     *
+     * Chained Musters share the clock, random source, ownership registry,
+     * declaration groups, and reconciliation report. Recursive graphs and
+     * duplicate dependency execution fail loudly. Call dependencies at the
+     * orchestration level rather than from inside a named group.
+     *
+     * @param class-string<Muster> ...$musters
+     * @return void
+     */
+    public function call(string ...$musters): void
+    {
+        if ($musters === []) {
+            throw new LogicException('Muster::call() requires at least one Muster class.');
+        }
+        if ($this->context->activeGroup() !== null) {
+            throw new LogicException('Muster::call() cannot run inside a named declaration group.');
+        }
+
+        // Lock the root scenario's clock before constructing dependencies so a
+        // dependency default epoch cannot silently replace the shared timeline.
+        $this->context->useDefaultClock($this->context->clock());
+
+        foreach ($musters as $musterClass) {
+            if (!is_subclass_of($musterClass, self::class)) {
+                throw new LogicException(sprintf('Muster::call() target [%s] must extend %s.', $musterClass, self::class));
+            }
+
+            $reflection = new \ReflectionClass($musterClass);
+            if (!$reflection->isInstantiable()) {
+                throw new LogicException(sprintf('Muster::call() target [%s] must be instantiable.', $musterClass));
+            }
+
+            /** @var class-string<Muster> $musterClass */
+            $this->context->enterMusterCall(static::class, $musterClass);
+            $completed = false;
+
+            try {
+                /** @var Muster $muster */
+                $muster = $reflection->newInstance($this->context);
+                $muster->run();
+                $completed = true;
+            } finally {
+                $this->context->leaveMusterCall($musterClass, $completed);
+            }
         }
     }
 
