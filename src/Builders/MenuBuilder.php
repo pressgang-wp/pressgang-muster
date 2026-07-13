@@ -5,6 +5,8 @@ namespace PressGang\Muster\Builders;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Ownership\HasOwnership;
+use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\MenuRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\TermRef;
@@ -13,14 +15,16 @@ use PressGang\Muster\Support\WpResult;
 /**
  * Fluent nav-menu builder with rebuild-on-save semantics.
  *
- * Identity rule: menu name. The menu record is upserted, but its items are
- * always deleted and recreated on save — declared order and nesting are the
- * single source of truth, so repeated runs converge on identical menus.
+ * Muster-scoped builders use an explicit logical key; menu name is the mutable
+ * WordPress locator. The menu record is upserted, but its items are always
+ * deleted and recreated on save so declared order and nesting remain canonical.
  *
  * Nesting: pass `parent:` with the title of a *previously declared* item.
  */
 final class MenuBuilder
 {
+    use HasOwnership;
+
     /**
      * Declared items in insertion order.
      *
@@ -40,11 +44,14 @@ final class MenuBuilder
     /**
      * @param MusterContext $context
      * @param string $name
+     * @param string|null $ownershipScope
      */
     public function __construct(
         private MusterContext $context,
         private string $name,
+        ?string $ownershipScope = null,
     ) {
+        $this->initializeOwnership($ownershipScope);
     }
 
     /**
@@ -123,6 +130,7 @@ final class MenuBuilder
 
     /**
      * Upsert the menu, rebuild its items, and assign theme locations.
+     * Unowned name matches require explicit `adopt()`.
      *
      * See: https://developer.wordpress.org/reference/functions/wp_create_nav_menu/
      * See: https://developer.wordpress.org/reference/functions/wp_update_nav_menu_item/
@@ -138,6 +146,8 @@ final class MenuBuilder
             throw new LogicException('Menu name is required.');
         }
 
+        $intent = $this->ownershipIntent();
+
         if ($this->context->dryRun()) {
             $this->context->logger()->info(
                 sprintf('Dry run menu rebuild [%s] with %d items.', $this->name, count($this->items))
@@ -150,10 +160,37 @@ final class MenuBuilder
             throw new RuntimeException('WordPress runtime functions are required to save menus.');
         }
 
-        $menuId = $this->upsertMenu();
+        $natural = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
+        $naturalId = is_object($natural) && isset($natural->term_id) ? (int) $natural->term_id : null;
+        $ownedId = null;
+
+        if ($intent !== null) {
+            $owned = $this->currentOwnership($this->context, $intent, 'menu', 'nav_menu');
+
+            if ($owned !== null && function_exists('wp_get_nav_menu_object')) {
+                $ownedMenu = wp_get_nav_menu_object($owned->id());
+                $ownedId = is_object($ownedMenu) && isset($ownedMenu->term_id) ? (int) $ownedMenu->term_id : null;
+            }
+
+            if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
+                throw new OwnershipConflict(sprintf('Menu name [%s] belongs to a different menu.', $this->name));
+            }
+
+            $existingId = $ownedId ?? $naturalId;
+            if ($existingId !== null) {
+                $this->claimExistingOwnership($this->context, $intent, 'menu', $existingId, 'nav_menu', $this->name);
+            }
+        }
+
+        $menuId = $this->upsertMenu($ownedId);
+
         $this->deleteExistingItems($menuId);
         $this->createItems($menuId);
         $this->assignLocations($menuId);
+
+        if ($intent !== null) {
+            $this->recordOwnership($this->context, $intent, 'menu', $menuId, 'nav_menu', $this->name);
+        }
 
         $this->context->logger()->debug(
             sprintf('Menu rebuilt [%s] as ID %d with %d items.', $this->name, $menuId, count($this->items))
@@ -169,8 +206,21 @@ final class MenuBuilder
      *
      * @throws RuntimeException If menu creation fails.
      */
-    private function upsertMenu(): int
+    private function upsertMenu(?int $ownedId = null): int
     {
+        if ($ownedId !== null) {
+            if (!function_exists('wp_update_nav_menu_object')) {
+                throw new RuntimeException('wp_update_nav_menu_object() is required to rename owned menus.');
+            }
+
+            $updated = wp_update_nav_menu_object($ownedId, ['menu-name' => $this->name]);
+            if (!WpResult::isId($updated)) {
+                throw new RuntimeException(sprintf('Failed to update owned menu [%s].', $this->name));
+            }
+
+            return (int) $updated;
+        }
+
         if (function_exists('wp_get_nav_menu_object')) {
             $existing = wp_get_nav_menu_object($this->name);
 

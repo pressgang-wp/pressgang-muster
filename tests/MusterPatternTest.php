@@ -25,7 +25,7 @@ final class MusterPatternTest extends TestCase
         $this->expectException(LogicException::class);
 
         $muster->pattern('event')->build(
-            fn (int $i): PostBuilder => $muster->post('event')->slug('event-' . $i)
+            fn (int $i): PostBuilder => $muster->post('event')->key('event-' . $i)->slug('event-' . $i)
         );
     }
 
@@ -42,6 +42,7 @@ final class MusterPatternTest extends TestCase
                 $runA[] = $headline;
 
                 return $muster->post('event')
+                    ->key('event-' . $i)
                     ->title($headline)
                     ->slug('event-' . $i)
                     ->status('publish');
@@ -56,6 +57,7 @@ final class MusterPatternTest extends TestCase
                 $runB[] = $headline;
 
                 return $muster->post('event')
+                    ->key('event-' . $i)
                     ->title($headline)
                     ->slug('event-' . $i)
                     ->status('publish');
@@ -73,7 +75,7 @@ final class MusterPatternTest extends TestCase
 
         self::assertInstanceOf(PostBuilder::class, $builder);
 
-        $ref = $builder->slug('magic-event')->save();
+        $ref = $builder->key('magic-event')->slug('magic-event')->save();
 
         self::assertSame('event', $ref->postType());
         self::assertSame('magic-event', $ref->slug());

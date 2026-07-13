@@ -39,16 +39,18 @@ abstract class Muster
     /**
      * Start a post builder for a given post type.
      *
+     * The builder must receive `key()` before `save()`.
+     *
      * @param string $postType
      * @return PostBuilder
      */
     public function post(string $postType = 'post'): PostBuilder
     {
-        return new PostBuilder($this->context, $postType);
+        return new PostBuilder($this->context, $postType, ownershipScope: static::class);
     }
 
     /**
-     * Start a page post builder.
+     * Start a page post builder, which requires `key()` before `save()`.
      *
      * @return PostBuilder
      */
@@ -58,7 +60,7 @@ abstract class Muster
     }
 
     /**
-     * Start a taxonomy term builder.
+     * Start a taxonomy term builder, which requires `key()` before `save()`.
      *
      * @param string $taxonomy
      * @param string|null $name
@@ -66,51 +68,51 @@ abstract class Muster
      */
     public function term(string $taxonomy, ?string $name = null): TermBuilder
     {
-        return new TermBuilder($this->context, $taxonomy, $name);
+        return new TermBuilder($this->context, $taxonomy, $name, static::class);
     }
 
     /**
-     * Start a user builder.
+     * Start a user builder, which requires `key()` before `save()`.
      *
      * @param string|null $login
      * @return UserBuilder
      */
     public function user(?string $login = null): UserBuilder
     {
-        return new UserBuilder($this->context, $login);
+        return new UserBuilder($this->context, $login, static::class);
     }
 
     /**
-     * Start an option builder.
+     * Start an option builder, which requires `key()` before `save()`.
      *
      * @param string $key
      * @return OptionBuilder
      */
     public function option(string $key): OptionBuilder
     {
-        return new OptionBuilder($this->context, $key);
+        return new OptionBuilder($this->context, $key, static::class);
     }
 
     /**
-     * Start a nav-menu builder.
+     * Start a nav-menu builder, which requires `key()` before `save()`.
      *
      * @param string $name
      * @return MenuBuilder
      */
     public function menu(string $name): MenuBuilder
     {
-        return new MenuBuilder($this->context, $name);
+        return new MenuBuilder($this->context, $name, static::class);
     }
 
     /**
-     * Start an attachment (media) builder.
+     * Start an attachment builder, which requires `key()` before `save()`.
      *
      * @param string $slug
      * @return AttachmentBuilder
      */
     public function attachment(string $slug): AttachmentBuilder
     {
-        return new AttachmentBuilder($this->context, $slug);
+        return new AttachmentBuilder($this->context, $slug, static::class);
     }
 
     /**
@@ -124,6 +126,34 @@ abstract class Muster
     }
 
     /**
+     * Permanently delete every resource owned by this concrete Muster.
+     *
+     * Unlike `truncate()`, this never selects resources merely because they
+     * share a post type or taxonomy.
+     *
+     * @return int Number of owned resources selected for deletion.
+     */
+    public function resetOwned(): int
+    {
+        return $this->context->ownership()->reset(static::class);
+    }
+
+    /**
+     * Delete owned resources not touched by the current successful run.
+     *
+     * Explicit keep keys may preserve conditional resources not declared in
+     * this run. Use after a complete run, not a partial `--only` run. Deletion
+     * is immediate until the future plan/apply lifecycle makes the diff visible.
+     *
+     * @param array<int, string> $keepKeys Additional logical keys to retain.
+     * @return int Number of stale resources selected for deletion.
+     */
+    public function pruneOwned(array $keepKeys = []): int
+    {
+        return $this->context->ownership()->prune(static::class, $keepKeys);
+    }
+
+    /**
      * Generated ACF values for every field group targeting $target, derived
      * from the active theme's acf-json — media and relational fields are
      * backed by real fixture objects (placeholder attachments, stub posts
@@ -131,7 +161,7 @@ abstract class Muster
      *
      * Feed the result straight to a builder:
      *
-     *     $this->post('event')->title(…)->acf($this->acfFor('event'))->save();
+     *     $this->post('event')->key('event:example')->title(…)->acf($this->acfFor('event'))->save();
      *
      * Values draw from the seeded Victuals stream, so successive calls vary
      * naturally while the run as a whole stays deterministic.
@@ -142,7 +172,10 @@ abstract class Muster
      */
     public function acfFor(string $target, string $variant = 'populated'): array
     {
-        $generator = new AcfValueGenerator($this->victuals(), ContextProviders::wire($this->context));
+        $generator = new AcfValueGenerator(
+            $this->victuals(),
+            ContextProviders::wire($this->context, static::class)
+        );
 
         return ThemeAcf::valuesFor($target, $generator, $variant);
     }

@@ -117,13 +117,13 @@ namespace PressGang\Muster\Tests {
             $this->pattern('allowed')->count(1)->build(function (int $i) {
                 $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 1;
 
-                return $this->post('event')->title('A')->slug('allowed-' . $i);
+                return $this->post('event')->key('allowed-' . $i)->title('A')->slug('allowed-' . $i);
             });
 
             $this->pattern('blocked')->count(1)->build(function (int $i) {
                 $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 100;
 
-                return $this->post('event')->title('B')->slug('blocked-' . $i);
+                return $this->post('event')->key('blocked-' . $i)->title('B')->slug('blocked-' . $i);
             });
         }
     }

@@ -5,17 +5,23 @@ namespace PressGang\Muster\Builders;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Ownership\HasOwnership;
+use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\PostRef;
 
 /**
  * Fluent post builder with idempotent merge-upsert behaviour.
  *
- * Existing posts are identified by `post_type + post_name`. Only fields set on
- * this builder are updated; omitted fields retain their current WordPress values.
- * Calling a setter with an empty value explicitly clears that field.
+ * Muster-scoped builders use an explicit logical key; `post_type + post_name`
+ * is the WordPress locator and may change for an already owned post. Only
+ * fields set on this builder are updated; omitted fields retain their current
+ * WordPress values. Calling a setter with an empty value explicitly clears it.
  */
 final class PostBuilder
 {
+    use HasOwnership;
+
     /**
      * @var array<string, mixed>
      */
@@ -30,12 +36,15 @@ final class PostBuilder
      * @param MusterContext $context
      * @param string $postType
      * @param string|null $title
+     * @param string|null $ownershipScope
      */
     public function __construct(
         private MusterContext $context,
         private string $postType = 'post',
         ?string $title = null,
+        ?string $ownershipScope = null,
     ) {
+        $this->initializeOwnership($ownershipScope);
         $this->payload['post_type'] = $postType;
 
         if ($title !== null) {
@@ -182,7 +191,8 @@ final class PostBuilder
     /**
      * @return PostRef
      *
-     * Identity rule: `post_type + post_name` (slug).
+     * Managed identity is `Muster class + logical key`; the WordPress locator is
+     * `post_type + post_name` (slug). Unowned locator matches require `adopt()`.
      * Lookup is performed with `get_posts()` using `name`, `post_type`, and `post_status=any`.
      * Existing records are updated via `wp_update_post()`; missing records are inserted via
      * `wp_insert_post()`. Meta payload is applied with `update_post_meta()`.
@@ -198,6 +208,8 @@ final class PostBuilder
     public function save(): PostRef
     {
         $slug = $this->resolveSlug();
+        $intent = $this->ownershipIntent();
+
         if ($this->context->dryRun()) {
             $this->context->logger()->info(
                 sprintf('Dry run post upsert [%s:%s].', $this->postType, $slug)
@@ -210,15 +222,28 @@ final class PostBuilder
             throw new RuntimeException('WordPress runtime functions are required to save posts.');
         }
 
-        $existing = get_posts([
-            'name' => $slug,
-            'post_type' => $this->postType,
-            'post_status' => 'any',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'suppress_filters' => true,
-            'no_found_rows' => true,
-        ]);
+        $naturalId = $this->findBySlug($slug);
+        $existingId = $naturalId;
+
+        if ($intent !== null) {
+            $owned = $this->currentOwnership($this->context, $intent, 'post', $this->postType);
+
+            $ownedId = $owned === null ? null : $this->resolveOwnedPostId($owned);
+            if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
+                throw new OwnershipConflict(sprintf(
+                    'Cannot move owned post [%s:%s] to slug [%s]; that slug belongs to post ID %d.',
+                    $intent['scope'],
+                    $intent['key'],
+                    $slug,
+                    $naturalId
+                ));
+            }
+
+            $existingId = $ownedId ?? $naturalId;
+            if ($existingId !== null) {
+                $this->claimExistingOwnership($this->context, $intent, 'post', $existingId, $this->postType, $slug);
+            }
+        }
 
         $attributes = [
             'post_type' => $this->postType,
@@ -251,8 +276,8 @@ final class PostBuilder
         $saveResult = 0;
         $action = 'created';
 
-        if (!empty($existing)) {
-            $attributes['ID'] = (int) $existing[0];
+        if ($existingId !== null) {
+            $attributes['ID'] = $existingId;
             $saveResult = wp_update_post($attributes, true);
             $action = 'updated';
         } else {
@@ -294,11 +319,45 @@ final class PostBuilder
             $this->context->acf()->updateFields($acf, 'post', $postId);
         }
 
+        if ($intent !== null) {
+            $this->recordOwnership($this->context, $intent, 'post', $postId, $this->postType, $slug);
+        }
+
         $this->context->logger()->debug(
             sprintf('Post %s [%s:%s] as ID %d.', $action, $this->postType, $slug, $postId)
         );
 
         return new PostRef($postId, $this->postType, $slug);
+    }
+
+    private function findBySlug(string $slug): ?int
+    {
+        $existing = get_posts([
+            'name' => $slug,
+            'post_type' => $this->postType,
+            'post_status' => 'any',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'suppress_filters' => true,
+            'no_found_rows' => true,
+        ]);
+
+        return empty($existing) ? null : (int) $existing[0];
+    }
+
+    private function resolveOwnedPostId(OwnedResource $owned): ?int
+    {
+        if (!function_exists('get_post')) {
+            throw new RuntimeException('get_post() is required to resolve owned posts.');
+        }
+
+        $post = get_post($owned->id());
+
+        return is_object($post)
+            && isset($post->ID, $post->post_type)
+            && (string) $post->post_type === $this->postType
+                ? (int) $post->ID
+                : null;
     }
 
     /**

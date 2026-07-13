@@ -25,7 +25,10 @@ final class ThemeAcfTest extends TestCase
         file_put_contents($this->acfJsonDir . '/group_event.json', json_encode([
             'key' => 'group_event',
             'title' => 'Event',
-            'fields' => [['key' => 'field_venue', 'name' => 'venue', 'type' => 'text']],
+            'fields' => [
+                ['key' => 'field_venue', 'name' => 'venue', 'type' => 'text'],
+                ['key' => 'field_hero', 'name' => 'hero', 'type' => 'image'],
+            ],
             'location' => [[['param' => 'post_type', 'operator' => '==', 'value' => 'event']]],
         ]));
 
@@ -85,5 +88,9 @@ final class ThemeAcfTest extends TestCase
 
         self::assertArrayHasKey('field_venue', $values);
         self::assertIsString($values['field_venue']);
+        self::assertArrayHasKey('field_hero', $values);
+        self::assertSame(1, $values['field_hero']);
+        self::assertSame(1, $muster->resetOwned());
+        self::assertSame([], get_posts(['name' => 'seed-hero', 'post_type' => 'attachment']));
     }
 }

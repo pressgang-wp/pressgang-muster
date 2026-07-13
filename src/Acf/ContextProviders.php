@@ -21,12 +21,12 @@ final class ContextProviders
     /**
      * Build the provider set for a context.
      *
-     * All created objects use idempotent natural keys prefixed with $prefix,
-     * so repeated generation reuses the same stubs rather than multiplying
-     * them — and callers with committed visual baselines can keep their
-     * historical prefix to avoid churning screenshot URLs.
+     * All created objects use stable logical keys owned by $ownershipScope and
+     * WordPress locators prefixed with $prefix. Repeated generation therefore
+     * reuses the same stubs rather than multiplying them.
      *
      * @param MusterContext $context
+     * @param string $ownershipScope Concrete Muster class that owns created support objects.
      * @param string $prefix Slug prefix for created stub objects.
      * @return array{
      *     attachment: callable(string): int,
@@ -35,18 +35,24 @@ final class ContextProviders
      *     user: callable(): int
      * }
      */
-    public static function wire(MusterContext $context, string $prefix = 'seed'): array
+    public static function wire(MusterContext $context, string $ownershipScope, string $prefix = 'seed'): array
     {
         return [
-            'attachment' => fn (string $name): int => (new AttachmentBuilder($context, "{$prefix}-" . self::slug($name)))
+            'attachment' => fn (string $name): int => (new AttachmentBuilder(
+                $context,
+                "{$prefix}-" . self::slug($name),
+                $ownershipScope
+            ))
+                ->key('acf:attachment:' . self::slug($name))
                 ->placeholder(1200, 800)
                 ->save()
                 ->id(),
 
-            'post' => function (array $postTypes) use ($context, $prefix): int {
+            'post' => function (array $postTypes) use ($context, $ownershipScope, $prefix): int {
                 $type = $postTypes[0] ?? 'post';
 
-                return (new PostBuilder($context, $type))
+                return (new PostBuilder($context, $type, ownershipScope: $ownershipScope))
+                    ->key('acf:post:' . self::slug($type))
                     ->title(ucfirst($type) . ' fixture')
                     ->slug("{$prefix}-related-" . self::slug($type))
                     ->status('publish')
@@ -54,7 +60,8 @@ final class ContextProviders
                     ->id();
             },
 
-            'term' => fn (string $taxonomy): int => (new TermBuilder($context, $taxonomy))
+            'term' => fn (string $taxonomy): int => (new TermBuilder($context, $taxonomy, ownershipScope: $ownershipScope))
+                ->key('acf:term:' . self::slug($taxonomy))
                 ->name('Fixture term')
                 ->slug("{$prefix}-term")
                 ->save()

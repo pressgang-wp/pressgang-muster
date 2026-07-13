@@ -94,22 +94,48 @@ namespace {
                 return new WP_Error('missing-id');
             }
 
-            $postType = (string) ($attrs['post_type'] ?? 'post');
-            $slug = (string) ($attrs['post_name'] ?? '');
-            $key = $postType . '::' . $slug;
+            $existing = null;
+            $oldKey = null;
+            foreach ($GLOBALS['__muster_wp_posts'] ?? [] as $key => $row) {
+                if ((int) ($row['ID'] ?? 0) === $id) {
+                    $existing = $row;
+                    $oldKey = $key;
+                    break;
+                }
+            }
 
-            $existing = $GLOBALS['__muster_wp_posts'][$key] ?? null;
             if ($existing === null) {
                 return new WP_Error('missing-post');
             }
 
-            $GLOBALS['__muster_wp_posts'][$key] = array_merge($existing, $attrs, [
+            $postType = (string) ($attrs['post_type'] ?? $existing['post_type'] ?? 'post');
+            $slug = (string) ($attrs['post_name'] ?? $existing['post_name'] ?? '');
+            $newKey = $postType . '::' . $slug;
+
+            if ($oldKey !== null) {
+                unset($GLOBALS['__muster_wp_posts'][$oldKey]);
+            }
+            unset($attrs['edit_date']);
+            $GLOBALS['__muster_wp_posts'][$newKey] = array_merge($existing, $attrs, [
                 'ID' => $id,
                 'post_type' => $postType,
                 'post_name' => $slug,
             ]);
 
             return $id;
+        }
+    }
+
+    if (!function_exists('get_post')) {
+        function get_post(int $postId): object|null
+        {
+            foreach ($GLOBALS['__muster_wp_posts'] ?? [] as $row) {
+                if ((int) ($row['ID'] ?? 0) === $postId) {
+                    return (object) $row;
+                }
+            }
+
+            return null;
         }
     }
 
@@ -229,6 +255,20 @@ namespace {
         }
     }
 
+    if (!function_exists('get_term')) {
+        function get_term(int $termId, string $taxonomy = ''): object|null
+        {
+            foreach ($GLOBALS['__muster_wp_terms'] ?? [] as $row) {
+                if ((int) ($row['term_id'] ?? 0) === $termId
+                    && ($taxonomy === '' || (string) ($row['taxonomy'] ?? '') === $taxonomy)) {
+                    return (object) $row;
+                }
+            }
+
+            return null;
+        }
+    }
+
     if (!function_exists('update_term_meta')) {
         /**
          * @param int $termId
@@ -247,14 +287,26 @@ namespace {
     if (!function_exists('get_user_by')) {
         /**
          * @param string $field
-         * @param string $value
+         * @param string|int $value
          * @return object|false
          */
-        function get_user_by(string $field, string $value): object|false
+        function get_user_by(string $field, string|int $value): object|false
         {
+            if ($field === 'id') {
+                foreach ($GLOBALS['__muster_wp_users'] ?? [] as $user) {
+                    if ((int) ($user['ID'] ?? 0) === (int) $value) {
+                        return (object) $user;
+                    }
+                }
+
+                return false;
+            }
+
             if ($field !== 'login') {
                 return false;
             }
+
+            $value = (string) $value;
 
             $user = $GLOBALS['__muster_wp_users'][$value] ?? null;
             if ($user === null) {
@@ -262,6 +314,20 @@ namespace {
             }
 
             return (object) $user;
+        }
+    }
+
+    if (!function_exists('wp_delete_user')) {
+        function wp_delete_user(int $userId): bool
+        {
+            foreach ($GLOBALS['__muster_wp_users'] ?? [] as $login => $user) {
+                if ((int) ($user['ID'] ?? 0) === $userId) {
+                    unset($GLOBALS['__muster_wp_users'][$login]);
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
@@ -348,6 +414,28 @@ namespace {
         }
     }
 
+    if (!function_exists('get_option')) {
+        function get_option(string $key, mixed $default = false): mixed
+        {
+            return array_key_exists($key, $GLOBALS['__muster_wp_options'] ?? [])
+                ? $GLOBALS['__muster_wp_options'][$key]['value']
+                : $default;
+        }
+    }
+
+    if (!function_exists('delete_option')) {
+        function delete_option(string $key): bool
+        {
+            if (!array_key_exists($key, $GLOBALS['__muster_wp_options'] ?? [])) {
+                return false;
+            }
+
+            unset($GLOBALS['__muster_wp_options'][$key]);
+
+            return true;
+        }
+    }
+
     if (!function_exists('add_option')) {
         /**
          * @param string $key
@@ -417,11 +505,55 @@ namespace {
     }
 
     if (!function_exists('wp_get_nav_menu_object')) {
-        function wp_get_nav_menu_object(string $menu): object|false
+        function wp_get_nav_menu_object(string|int $menu): object|false
         {
+            if (is_int($menu) || ctype_digit($menu)) {
+                foreach ($GLOBALS['__muster_wp_menus'] ?? [] as $name => $id) {
+                    if ((int) $id === (int) $menu) {
+                        return (object) ['term_id' => (int) $id, 'name' => $name];
+                    }
+                }
+
+                return false;
+            }
+
             $id = $GLOBALS['__muster_wp_menus'][$menu] ?? null;
 
             return $id === null ? false : (object) ['term_id' => $id, 'name' => $menu];
+        }
+    }
+
+    if (!function_exists('wp_update_nav_menu_object')) {
+        /** @param array<string, mixed> $args */
+        function wp_update_nav_menu_object(int $menuId, array $args = []): int|WP_Error
+        {
+            foreach ($GLOBALS['__muster_wp_menus'] ?? [] as $name => $id) {
+                if ((int) $id !== $menuId) {
+                    continue;
+                }
+
+                $newName = (string) ($args['menu-name'] ?? $name);
+                unset($GLOBALS['__muster_wp_menus'][$name]);
+                $GLOBALS['__muster_wp_menus'][$newName] = $menuId;
+
+                return $menuId;
+            }
+
+            return new WP_Error('missing-menu');
+        }
+    }
+
+    if (!function_exists('wp_delete_nav_menu')) {
+        function wp_delete_nav_menu(int $menuId): bool
+        {
+            foreach ($GLOBALS['__muster_wp_menus'] ?? [] as $name => $id) {
+                if ((int) $id === $menuId) {
+                    unset($GLOBALS['__muster_wp_menus'][$name], $GLOBALS['__muster_wp_menu_items'][$menuId]);
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 

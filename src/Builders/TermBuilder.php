@@ -5,17 +5,22 @@ namespace PressGang\Muster\Builders;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Ownership\HasOwnership;
+use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\TermRef;
 
 /**
  * Fluent term builder with idempotent merge-upsert behaviour.
  *
- * This builder targets taxonomy terms and persists with deterministic identity:
- * `taxonomy + slug`. Existing terms retain values for fields that were not set
- * on this builder; passing an empty value explicitly clears that field.
+ * Muster-scoped builders use an explicit logical key; `taxonomy + slug` is the
+ * WordPress locator and may change for an already owned term. Existing terms
+ * retain values for fields not set on this builder; an empty value clears it.
  */
 final class TermBuilder
 {
+    use HasOwnership;
+
     /**
      * @var array<string, mixed>
      */
@@ -25,12 +30,15 @@ final class TermBuilder
      * @param MusterContext $context
      * @param string $taxonomy
      * @param string|null $name
+     * @param string|null $ownershipScope
      */
     public function __construct(
         private MusterContext $context,
         private string $taxonomy,
         ?string $name = null,
+        ?string $ownershipScope = null,
     ) {
+        $this->initializeOwnership($ownershipScope);
         if ($name !== null) {
             $this->payload['name'] = $name;
         }
@@ -129,7 +137,8 @@ final class TermBuilder
     /**
      * Persist the term to WordPress via idempotent upsert.
      *
-     * Identity rule: `taxonomy + slug`.
+     * Managed identity is `Muster class + logical key`; the WordPress locator is
+     * `taxonomy + slug`. Unowned locator matches require `adopt()`.
      * Existing terms are updated using `wp_update_term()`, missing terms are inserted
      * via `wp_insert_term()`. Term meta is applied with `update_term_meta()`.
      *
@@ -146,6 +155,7 @@ final class TermBuilder
     {
         $slug = $this->resolveSlug();
         $name = (string) ($this->payload['name'] ?? $slug);
+        $intent = $this->ownershipIntent();
 
         if ($this->context->dryRun()) {
             $this->context->logger()->info(
@@ -159,7 +169,37 @@ final class TermBuilder
             throw new RuntimeException('WordPress term runtime functions are required to save terms.');
         }
 
-        $existing = get_term_by('slug', $slug, $this->taxonomy);
+        $natural = get_term_by('slug', $slug, $this->taxonomy);
+        $existing = $natural;
+
+        if ($intent !== null) {
+            $owned = $this->currentOwnership($this->context, $intent, 'term', $this->taxonomy);
+
+            $ownedTerm = $owned === null ? null : $this->resolveOwnedTerm($owned);
+            if ($ownedTerm !== null && $natural !== false
+                && isset($natural->term_id)
+                && (int) $ownedTerm->term_id !== (int) $natural->term_id) {
+                throw new OwnershipConflict(sprintf(
+                    'Cannot move owned term [%s:%s] to slug [%s]; that slug belongs to term ID %d.',
+                    $intent['scope'],
+                    $intent['key'],
+                    $slug,
+                    (int) $natural->term_id
+                ));
+            }
+
+            $existing = $ownedTerm ?? $natural;
+            if ($existing !== false && $existing !== null && isset($existing->term_id)) {
+                $this->claimExistingOwnership(
+                    $this->context,
+                    $intent,
+                    'term',
+                    (int) $existing->term_id,
+                    $this->taxonomy,
+                    $slug
+                );
+            }
+        }
 
         $attributes = [
             'slug' => $slug,
@@ -209,11 +249,26 @@ final class TermBuilder
             $this->context->acf()->updateFields($acf, 'term', $termId);
         }
 
+        if ($intent !== null) {
+            $this->recordOwnership($this->context, $intent, 'term', $termId, $this->taxonomy, $slug);
+        }
+
         $this->context->logger()->debug(
             sprintf('Term %s [%s:%s] as ID %d.', $action, $this->taxonomy, $slug, $termId)
         );
 
         return new TermRef($termId, $this->taxonomy, $slug);
+    }
+
+    private function resolveOwnedTerm(OwnedResource $owned): ?object
+    {
+        if (!function_exists('get_term')) {
+            throw new RuntimeException('get_term() is required to resolve owned terms.');
+        }
+
+        $term = get_term($owned->id(), $this->taxonomy);
+
+        return is_object($term) && isset($term->term_id) ? $term : null;
     }
 
     /**

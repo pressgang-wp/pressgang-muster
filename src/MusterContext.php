@@ -6,6 +6,7 @@ use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Adapters\NullAcfAdapter;
 use PressGang\Muster\Contracts\LoggerInterface;
 use PressGang\Muster\Contracts\NullLogger;
+use PressGang\Muster\Ownership\OwnershipRegistry;
 use PressGang\Muster\Victuals\Victuals;
 use PressGang\Muster\Victuals\VictualsFactory;
 
@@ -15,6 +16,8 @@ use PressGang\Muster\Victuals\VictualsFactory;
 final class MusterContext
 {
     private ?Victuals $victuals = null;
+
+    private ?OwnershipRegistry $ownership = null;
 
     /**
      * @param VictualsFactory $victualsFactory
@@ -84,6 +87,21 @@ final class MusterContext
     public function acf(): AcfAdapterInterface
     {
         return $this->acf;
+    }
+
+    /**
+     * Access the ownership registry for keyed Muster resources.
+     *
+     * The registry is scoped by concrete Muster class at the builder and
+     * orchestration layers; this context owns only its WordPress persistence.
+     *
+     * @return OwnershipRegistry
+     */
+    public function ownership(): OwnershipRegistry
+    {
+        $this->ownership ??= new OwnershipRegistry($this);
+
+        return $this->ownership;
     }
 
     /**
