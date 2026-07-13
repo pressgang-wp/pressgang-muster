@@ -7,7 +7,7 @@ use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Adapters\NullAcfAdapter;
 use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Contracts\LoggerInterface;
-use PressGang\Muster\Contracts\NullLogger;
+use PressGang\Muster\Adapters\NullLogger;
 use PressGang\Muster\Ownership\OwnershipRegistry;
 use PressGang\Muster\Results\RunReport;
 use PressGang\Muster\Victuals\Victuals;

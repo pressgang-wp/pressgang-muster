@@ -1,6 +1,8 @@
 <?php
 
-namespace PressGang\Muster\Contracts;
+namespace PressGang\Muster\Adapters;
+
+use PressGang\Muster\Contracts\LoggerInterface;
 
 /**
  * Logger that sends Muster run information to the active WP-CLI process.

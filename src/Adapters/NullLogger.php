@@ -1,6 +1,8 @@
 <?php
 
-namespace PressGang\Muster\Contracts;
+namespace PressGang\Muster\Adapters;
+
+use PressGang\Muster\Contracts\LoggerInterface;
 
 /**
  * No-op logger used when no output sink is registered.

@@ -4,8 +4,8 @@ namespace PressGang\Muster\Cli;
 
 use InvalidArgumentException;
 use PressGang\Muster\Clock\FixtureClock;
-use PressGang\Muster\Contracts\NullLogger;
-use PressGang\Muster\Contracts\WpCliLogger;
+use PressGang\Muster\Adapters\NullLogger;
+use PressGang\Muster\Adapters\WpCliLogger;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Results\Operation;
