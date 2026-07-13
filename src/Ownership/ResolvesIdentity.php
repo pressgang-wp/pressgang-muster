@@ -50,7 +50,7 @@ trait ResolvesIdentity
         callable $conflictMessage,
     ): array {
         $natural = $findNatural();
-        if ($natural !== null && $context->isPlannedDeleted($type, $idOf($natural), $subtype, $locator)) {
+        if ($natural !== null && $context->ownership()->isPlannedDeleted($type, $idOf($natural), $subtype, $locator)) {
             $natural = null;
         }
 
@@ -59,27 +59,21 @@ trait ResolvesIdentity
         $owned = null;
 
         if ($intent !== null) {
-            $owned = $this->currentOwnership($context, $intent, $type, $subtype);
+            $registry = $context->ownership();
+            $owned = $registry->resolve($intent, $type, $subtype);
 
             $ownedMatch = $owned === null ? null : $resolveOwned($owned);
             if ($ownedMatch !== null
-                && $context->isPlannedDeleted($type, $idOf($ownedMatch), $subtype, $owned->locator())) {
+                && $registry->isPlannedDeleted($type, $idOf($ownedMatch), $subtype, $owned->locator())) {
                 $ownedMatch = null;
             }
             if ($ownedMatch !== null && $natural !== null && $idOf($ownedMatch) !== $idOf($natural)) {
-                $this->throwOwnershipConflict(
-                    $context,
-                    $intent,
-                    $type,
-                    $idOf($natural),
-                    $locator,
-                    $conflictMessage($idOf($natural))
-                );
+                $registry->recordConflict($intent, $type, $idOf($natural), $locator, $conflictMessage($idOf($natural)));
             }
 
             $existing = $ownedMatch ?? $natural;
             if ($existing !== null) {
-                $this->claimExistingOwnership($context, $intent, $type, $idOf($existing), $subtype, $locator);
+                $registry->claim($intent, $type, $idOf($existing), $subtype, $locator);
             }
         }
 

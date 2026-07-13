@@ -98,7 +98,7 @@ final class OptionBuilder implements PersistableDeclaration
 
         $owned = null;
         if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'option', 'option');
+            $owned = $this->context->ownership()->resolve($intent, 'option', 'option');
             if ($owned !== null && $owned->locator() !== $this->key) {
                 throw new LogicException(sprintf(
                     'Owned option [%s:%s] cannot change option name from [%s] to [%s].',
@@ -114,10 +114,10 @@ final class OptionBuilder implements PersistableDeclaration
         $sentinel = new \stdClass();
         $current = get_option($this->key, $sentinel);
         $exists = $current !== $sentinel
-            && !$this->context->isPlannedDeleted('option', 0, 'option', $this->key);
+            && !$this->context->ownership()->isPlannedDeleted('option', 0, 'option', $this->key);
 
         if ($intent !== null && $exists) {
-            $this->claimExistingOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+            $this->context->ownership()->claim($intent, 'option', 0, 'option', $this->key);
         }
 
         $operation = $this->optionOperation($exists, $current, $owned, $intent);

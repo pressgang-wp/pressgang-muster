@@ -248,7 +248,7 @@ final class UserBuilder implements PersistableDeclaration
             return null;
         }
 
-        if ($this->context->isPlannedDeleted('user', (int) $user->ID, 'user', $owned->locator())) {
+        if ($this->context->ownership()->isPlannedDeleted('user', (int) $user->ID, 'user', $owned->locator())) {
             return null;
         }
 

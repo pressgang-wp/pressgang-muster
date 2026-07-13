@@ -119,7 +119,7 @@ final class TruncateBuilder
             $resource = new OwnedResource('truncate', "{$type}:{$subtype}:{$id}", $type, $id, $subtype, $subtype);
 
             if ($this->context->dryRun()) {
-                $this->context->markPlannedDeletion($resource);
+                $this->context->ownership()->markPlannedDeletion($resource);
             } else {
                 $delete($id);
             }
@@ -141,7 +141,7 @@ final class TruncateBuilder
             $resource->key(),
             $resource->locator(),
             $resource->id(),
-            group: $this->context->activeGroup()
+            group: $this->context->scope()->activeGroup()
         ));
     }
 }

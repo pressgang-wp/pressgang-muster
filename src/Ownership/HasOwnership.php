@@ -4,7 +4,6 @@ namespace PressGang\Muster\Ownership;
 
 use LogicException;
 use PressGang\Muster\MusterContext;
-use PressGang\Muster\Results\Operation;
 use PressGang\Muster\Results\OperationAction;
 
 /**
@@ -91,100 +90,6 @@ trait HasOwnership
     }
 
     /**
-     * Resolve and type-check the registry record for one builder intent.
-     *
-     * @param MusterContext $context
-     * @param array{scope: string, key: string, adopt: bool} $intent
-     * @param string $type
-     * @param string $subtype
-     * @return OwnedResource|null
-     */
-    private function currentOwnership(
-        MusterContext $context,
-        array $intent,
-        string $type,
-        string $subtype,
-    ): ?OwnedResource {
-        $owned = $context->ownership()->find($intent['scope'], $intent['key']);
-
-        if ($owned !== null && ($owned->type() !== $type || $owned->subtype() !== $subtype)) {
-            $error = new OwnershipConflict(sprintf(
-                'Logical key [%s:%s] already identifies a different resource type.',
-                $intent['scope'],
-                $intent['key']
-            ));
-            $this->reportOperation(
-                $context,
-                $intent,
-                OperationAction::Conflict,
-                $type,
-                $owned->id(),
-                $owned->locator(),
-                $error->getMessage()
-            );
-
-            throw $error;
-        }
-
-        return $owned;
-    }
-
-    /**
-     * Assert that an existing WordPress resource may be claimed by this intent.
-     *
-     * @param MusterContext $context
-     * @param array{scope: string, key: string, adopt: bool} $intent
-     * @param string $type
-     * @param int $id
-     * @param string $subtype
-     * @param string $locator
-     * @return void
-     */
-    private function claimExistingOwnership(
-        MusterContext $context,
-        array $intent,
-        string $type,
-        int $id,
-        string $subtype,
-        string $locator,
-    ): void {
-        try {
-            $context->ownership()->assertClaimable(
-                new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator),
-                $intent['adopt']
-            );
-        } catch (OwnershipConflict $error) {
-            $this->reportOperation($context, $intent, OperationAction::Conflict, $type, $id, $locator, $error->getMessage());
-
-            throw $error;
-        }
-    }
-
-    /**
-     * Persist ownership only after the resource and declared side effects save.
-     *
-     * @param MusterContext $context
-     * @param array{scope: string, key: string, adopt: bool} $intent
-     * @param string $type
-     * @param int $id
-     * @param string $subtype
-     * @param string $locator
-     * @return void
-     */
-    private function recordOwnership(
-        MusterContext $context,
-        array $intent,
-        string $type,
-        int $id,
-        string $subtype,
-        string $locator,
-    ): void {
-        $context->ownership()->record(
-            new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator)
-        );
-    }
-
-    /**
      * Record ownership and report the outcome for one completed upsert.
      *
      * Record-then-report in one fixed order, so the dry-run, keep, and
@@ -213,64 +118,8 @@ trait HasOwnership
             return;
         }
 
-        $this->recordOwnership($context, $intent, $type, $id, $subtype, $locator);
-        $this->reportOperation($context, $intent, $action, $type, $id, $locator);
-    }
-
-    /**
-     * Add one resource outcome to the current reconciliation report.
-     *
-     * @param MusterContext $context
-     * @param array{scope: string, key: string, adopt: bool} $intent
-     * @param OperationAction $action
-     * @param string $type
-     * @param int $id
-     * @param string $locator
-     * @param string|null $message
-     * @return void
-     */
-    private function reportOperation(
-        MusterContext $context,
-        array $intent,
-        OperationAction $action,
-        string $type,
-        int $id,
-        string $locator,
-        ?string $message = null,
-    ): void {
-        $context->report()->add(new Operation(
-            $action,
-            $type,
-            $intent['scope'],
-            $intent['key'],
-            $locator,
-            $id,
-            $message,
-            $context->activeGroup()
-        ));
-    }
-
-    /**
-     * Record a resource-addressed conflict and abort the current pass.
-     *
-     * @param MusterContext $context
-     * @param array{scope: string, key: string, adopt: bool} $intent
-     * @param string $type
-     * @param int $id
-     * @param string $locator
-     * @param string $message
-     * @return never
-     */
-    private function throwOwnershipConflict(
-        MusterContext $context,
-        array $intent,
-        string $type,
-        int $id,
-        string $locator,
-        string $message,
-    ): never {
-        $this->reportOperation($context, $intent, OperationAction::Conflict, $type, $id, $locator, $message);
-
-        throw new OwnershipConflict($message);
+        $registry = $context->ownership();
+        $registry->record(new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator));
+        $registry->reportOperation($intent, $action, $type, $id, $locator);
     }
 }

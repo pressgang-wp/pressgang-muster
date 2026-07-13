@@ -38,7 +38,7 @@ final class MusterGroupTest extends TestCase
         };
 
         $muster->run();
-        $context->assertOnlyGroupsResolved();
+        $context->scope()->assertOnlyGroupsResolved();
 
         self::assertSame(1, $muster->selected);
         self::assertSame(0, $muster->skipped);
@@ -81,7 +81,7 @@ final class MusterGroupTest extends TestCase
             'Unknown Muster group requested by --only: missing. Available groups: content.'
         );
 
-        $context->assertOnlyGroupsResolved();
+        $context->scope()->assertOnlyGroupsResolved();
     }
 
     public function testGroupsCannotBeNested(): void

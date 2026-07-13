@@ -29,8 +29,164 @@ final class OwnershipRegistry
      */
     private array $plannedClaims = [];
 
+    /**
+     * Planned-deletion overlay keyed by resource identity token.
+     *
+     * @var array<string, true>
+     */
+    private array $plannedDeletions = [];
+
+    private WpResources $wp;
+
     public function __construct(private MusterContext $context)
     {
+        $this->wp = new WpResources();
+    }
+
+    /**
+     * Mark a resource as absent from the planning overlay after planned pruning.
+     *
+     * @param OwnedResource $resource
+     * @return void
+     */
+    public function markPlannedDeletion(OwnedResource $resource): void
+    {
+        $this->plannedDeletions[self::deletionToken(
+            $resource->type(),
+            $resource->id(),
+            $resource->subtype(),
+            $resource->locator()
+        )] = true;
+    }
+
+    /**
+     * Check whether a prior planned operation removes this resource.
+     *
+     * @param string $type
+     * @param int $id
+     * @param string $subtype
+     * @param string $locator
+     * @return bool
+     */
+    public function isPlannedDeleted(string $type, int $id, string $subtype, string $locator): bool
+    {
+        return isset($this->plannedDeletions[self::deletionToken($type, $id, $subtype, $locator)]);
+    }
+
+    /**
+     * Build the identity token used to key the planned-deletion overlay.
+     *
+     * Tokens use the WordPress storage family (see OwnedResource::family()) so
+     * that, for example, deleting posts of type `attachment` also hides those
+     * IDs from the attachment builder during the same planning pass.
+     */
+    private static function deletionToken(string $type, int $id, string $subtype, string $locator): string
+    {
+        $family = OwnedResource::family($type);
+
+        return $id > 0
+            ? sprintf('%s:id:%d', $family, $id)
+            : sprintf('%s:%s:%s', $family, $subtype, $locator);
+    }
+
+    /**
+     * Resolve and type-check the registry record for one builder intent.
+     *
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param string $type
+     * @param string $subtype
+     * @return OwnedResource|null
+     * @throws OwnershipConflict If the key already identifies another resource type.
+     */
+    public function resolve(array $intent, string $type, string $subtype): ?OwnedResource
+    {
+        $owned = $this->find($intent['scope'], $intent['key']);
+
+        if ($owned !== null && ($owned->type() !== $type || $owned->subtype() !== $subtype)) {
+            $error = new OwnershipConflict(sprintf(
+                'Logical key [%s:%s] already identifies a different resource type.',
+                $intent['scope'],
+                $intent['key']
+            ));
+            $this->reportOperation($intent, OperationAction::Conflict, $type, $owned->id(), $owned->locator(), $error->getMessage());
+
+            throw $error;
+        }
+
+        return $owned;
+    }
+
+    /**
+     * Assert that an existing WordPress resource may be claimed by this intent.
+     *
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param string $type
+     * @param int $id
+     * @param string $subtype
+     * @param string $locator
+     * @return void
+     * @throws OwnershipConflict If the resource is owned elsewhere or needs adopt().
+     */
+    public function claim(array $intent, string $type, int $id, string $subtype, string $locator): void
+    {
+        try {
+            $this->assertClaimable(
+                new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator),
+                $intent['adopt']
+            );
+        } catch (OwnershipConflict $error) {
+            $this->reportOperation($intent, OperationAction::Conflict, $type, $id, $locator, $error->getMessage());
+
+            throw $error;
+        }
+    }
+
+    /**
+     * Record a resource-addressed conflict and abort the current pass.
+     *
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param string $type
+     * @param int $id
+     * @param string $locator
+     * @param string $message
+     * @return never
+     */
+    public function recordConflict(array $intent, string $type, int $id, string $locator, string $message): never
+    {
+        $this->reportOperation($intent, OperationAction::Conflict, $type, $id, $locator, $message);
+
+        throw new OwnershipConflict($message);
+    }
+
+    /**
+     * Add one resource outcome to the current reconciliation report.
+     *
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param OperationAction $action
+     * @param string $type
+     * @param int $id
+     * @param string $locator
+     * @param string|null $message
+     * @return void
+     */
+    public function reportOperation(
+        array $intent,
+        OperationAction $action,
+        string $type,
+        int $id,
+        string $locator,
+        ?string $message = null,
+    ): void {
+        $this->context->report()->add(new Operation(
+            $action,
+            $type,
+            $intent['scope'],
+            $intent['key'],
+            $locator,
+            $id,
+            $message,
+            $this->context->scope()->activeGroup()
+        ));
     }
 
     public function find(string $scope, string $key): ?OwnedResource
@@ -170,7 +326,7 @@ final class OwnershipRegistry
         if ($this->context->dryRun()) {
             foreach ($remove as $key) {
                 $this->context->logger()->info(sprintf('Planning delete owned resource [%s:%s].', $scope, $key));
-                $this->context->markPlannedDeletion($owned[$key]);
+                $this->markPlannedDeletion($owned[$key]);
                 $this->reportPrune($owned[$key]);
             }
 
@@ -182,7 +338,7 @@ final class OwnershipRegistry
 
         try {
             foreach ($remove as $key) {
-                $this->delete($owned[$key]);
+                $this->wp->delete($owned[$key]);
                 $this->reportPrune($owned[$key]);
                 unset($records[$scope][$key]);
                 $changed = true;
@@ -211,7 +367,7 @@ final class OwnershipRegistry
             $resource->key(),
             $resource->locator(),
             $resource->id(),
-            group: $this->context->activeGroup()
+            group: $this->context->scope()->activeGroup()
         ));
     }
 
@@ -277,70 +433,4 @@ final class OwnershipRegistry
         update_option(self::OPTION, $records, false);
     }
 
-    private function delete(OwnedResource $resource): void
-    {
-        if (!$this->exists($resource)) {
-            return;
-        }
-
-        $result = match ($resource->type()) {
-            'post', 'attachment' => function_exists('wp_delete_post')
-                ? wp_delete_post($resource->id(), true)
-                : throw new RuntimeException('wp_delete_post() is required to reset owned posts.'),
-            'term' => function_exists('wp_delete_term')
-                ? wp_delete_term($resource->id(), $resource->subtype())
-                : throw new RuntimeException('wp_delete_term() is required to reset owned terms.'),
-            'user' => function_exists('wp_delete_user')
-                ? wp_delete_user($resource->id())
-                : throw new RuntimeException('wp_delete_user() is required to reset owned users.'),
-            'option' => function_exists('delete_option')
-                ? delete_option($resource->locator())
-                : throw new RuntimeException('delete_option() is required to reset owned options.'),
-            'menu' => function_exists('wp_delete_nav_menu')
-                ? wp_delete_nav_menu($resource->id())
-                : throw new RuntimeException('wp_delete_nav_menu() is required to reset owned menus.'),
-            'comment' => function_exists('wp_delete_comment')
-                ? wp_delete_comment($resource->id(), true)
-                : throw new RuntimeException('wp_delete_comment() is required to reset owned comments.'),
-            default => throw new RuntimeException(sprintf('Cannot delete unknown owned resource type [%s].', $resource->type())),
-        };
-
-        if ($result === false || (function_exists('is_wp_error') && is_wp_error($result))) {
-            throw new RuntimeException(sprintf('Failed to delete owned resource [%s:%s].', $resource->scope(), $resource->key()));
-        }
-    }
-
-    private function exists(OwnedResource $resource): bool
-    {
-        return match ($resource->type()) {
-            'post', 'attachment' => function_exists('get_post')
-                ? (($post = get_post($resource->id())) !== null && $post !== false)
-                : true,
-            'term' => function_exists('get_term')
-                ? (($term = get_term($resource->id(), $resource->subtype())) !== null
-                    && $term !== false
-                    && !(function_exists('is_wp_error') && is_wp_error($term)))
-                : true,
-            'user' => function_exists('get_user_by')
-                ? get_user_by('id', $resource->id()) !== false
-                : true,
-            'option' => function_exists('get_option')
-                ? $this->optionExists($resource->locator())
-                : true,
-            'menu' => function_exists('wp_get_nav_menu_object')
-                ? wp_get_nav_menu_object($resource->id()) !== false
-                : true,
-            'comment' => function_exists('get_comment')
-                ? get_comment($resource->id()) !== null
-                : true,
-            default => true,
-        };
-    }
-
-    private function optionExists(string $name): bool
-    {
-        $missing = new \stdClass();
-
-        return get_option($name, $missing) !== $missing;
-    }
 }

@@ -222,7 +222,7 @@ final class Invoker
                 $context->ownership()->reset($musterClass);
             }
             $muster->run();
-            $context->assertOnlyGroupsResolved();
+            $context->scope()->assertOnlyGroupsResolved();
 
             return null;
         } catch (\Throwable $error) {

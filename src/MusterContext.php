@@ -9,13 +9,17 @@ use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Contracts\LoggerInterface;
 use PressGang\Muster\Contracts\NullLogger;
 use PressGang\Muster\Ownership\OwnershipRegistry;
-use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Results\RunReport;
 use PressGang\Muster\Victuals\Victuals;
 use PressGang\Muster\Victuals\VictualsFactory;
 
 /**
- * Shared runtime context for a single Muster execution.
+ * Dependency bag shared by every component of a single Muster execution.
+ *
+ * The context exposes the run's collaborators — generated values, clock,
+ * logger, ACF adapter, ownership registry, reconciliation report — plus two
+ * focused state holders: {@see DeclarationScope} for named-group rules and
+ * {@see MusterCallGraph} for chained `Muster::call()` dependencies.
  */
 final class MusterContext
 {
@@ -29,27 +33,9 @@ final class MusterContext
 
     private bool $clockConfigured;
 
-    private ?string $activeGroup = null;
+    private DeclarationScope $scope;
 
-    /**
-     * @var array<string, true>
-     */
-    private array $declaredGroups = [];
-
-    /**
-     * @var array<string, true>
-     */
-    private array $plannedDeletions = [];
-
-    /**
-     * @var array<int, class-string<Muster>>
-     */
-    private array $musterCallStack = [];
-
-    /**
-     * @var array<class-string<Muster>, true>
-     */
-    private array $completedMusterCalls = [];
+    private MusterCallGraph $callGraph;
 
     /**
      * @param VictualsFactory $victualsFactory
@@ -68,7 +54,7 @@ final class MusterContext
         private ?int $seed = null,
         private array $seedOverrides = [],
         private bool $dryRun = false,
-        private array $onlyGroups = [],
+        array $onlyGroups = [],
         ?FixtureClock $clock = null,
     ) {
         $this->logger ??= new NullLogger();
@@ -76,6 +62,28 @@ final class MusterContext
         $this->report = new RunReport();
         $this->clockConfigured = $clock !== null;
         $this->clock = $clock ?? FixtureClock::system();
+        $this->scope = new DeclarationScope($this->logger, $onlyGroups);
+        $this->callGraph = new MusterCallGraph();
+    }
+
+    /**
+     * Access the declaration-group state and `--only` partial-run rules.
+     *
+     * @return DeclarationScope
+     */
+    public function scope(): DeclarationScope
+    {
+        return $this->scope;
+    }
+
+    /**
+     * Access the chained `Muster::call()` dependency graph.
+     *
+     * @return MusterCallGraph
+     */
+    public function callGraph(): MusterCallGraph
+    {
+        return $this->callGraph;
     }
 
     /**
@@ -214,52 +222,6 @@ final class MusterContext
     }
 
     /**
-     * Mark a resource as absent from the planning overlay after planned pruning.
-     *
-     * @param OwnedResource $resource
-     * @return void
-     */
-    public function markPlannedDeletion(OwnedResource $resource): void
-    {
-        $this->plannedDeletions[$this->resourceToken(
-            $resource->type(),
-            $resource->id(),
-            $resource->subtype(),
-            $resource->locator()
-        )] = true;
-    }
-
-    /**
-     * Check whether a prior planned operation removes this resource.
-     *
-     * @param string $type
-     * @param int $id
-     * @param string $subtype
-     * @param string $locator
-     * @return bool
-     */
-    public function isPlannedDeleted(string $type, int $id, string $subtype, string $locator): bool
-    {
-        return isset($this->plannedDeletions[$this->resourceToken($type, $id, $subtype, $locator)]);
-    }
-
-    /**
-     * Build the identity token used to key the planned-deletion overlay.
-     *
-     * Tokens use the WordPress storage family (see OwnedResource::family()) so
-     * that, for example, deleting posts of type `attachment` also hides those
-     * IDs from the attachment builder during the same planning pass.
-     */
-    private function resourceToken(string $type, int $id, string $subtype, string $locator): string
-    {
-        $family = OwnedResource::family($type);
-
-        return $id > 0
-            ? sprintf('%s:id:%d', $family, $id)
-            : sprintf('%s:%s:%s', $family, $subtype, $locator);
-    }
-
-    /**
      * @return int|null
      */
     public function seed(): ?int
@@ -290,205 +252,5 @@ final class MusterContext
     public function dryRun(): bool
     {
         return $this->dryRun;
-    }
-
-    /**
-     * Return configured `--only` declaration group allowlist values.
-     *
-     * @return array<int, string>
-     */
-    public function onlyGroups(): array
-    {
-        return $this->onlyGroups;
-    }
-
-    /**
-     * Enter a named declaration group when it is selected for this run.
-     *
-     * Group names must be unique within one Muster pass. A filtered-out group
-     * is still registered so unknown `--only` values can be reported, but its
-     * callback must not be invoked by the caller.
-     *
-     * @param string $name
-     * @return bool Whether the group is selected and has been entered.
-     */
-    public function enterGroup(string $name): bool
-    {
-        $name = trim($name);
-
-        if ($name === '') {
-            throw new LogicException('Muster group names must not be empty.');
-        }
-
-        if ($this->activeGroup !== null) {
-            throw new LogicException(sprintf(
-                'Muster group [%s] cannot be nested inside active group [%s].',
-                $name,
-                $this->activeGroup
-            ));
-        }
-
-        if (isset($this->declaredGroups[$name])) {
-            throw new LogicException(sprintf('Muster group [%s] was declared more than once.', $name));
-        }
-
-        $this->declaredGroups[$name] = true;
-
-        if ($this->onlyGroups !== [] && !in_array($name, $this->onlyGroups, true)) {
-            $this->logger->info(sprintf('Skipping group [%s] due to --only filter.', $name));
-
-            return false;
-        }
-
-        $this->activeGroup = $name;
-
-        return true;
-    }
-
-    /**
-     * Leave the active declaration group.
-     *
-     * @return void
-     */
-    public function leaveGroup(): void
-    {
-        if ($this->activeGroup === null) {
-            throw new LogicException('Cannot leave a Muster group when no group is active.');
-        }
-
-        $this->activeGroup = null;
-    }
-
-    /**
-     * Return the group currently evaluating declarations, if any.
-     *
-     * @return string|null
-     */
-    public function activeGroup(): ?string
-    {
-        return $this->activeGroup;
-    }
-
-    /**
-     * Require partial runs to place every data declaration inside a group.
-     *
-     * This fails before a builder can perform WordPress reads or writes. Full
-     * runs remain free to use ungrouped declarations when filtering is not needed.
-     *
-     * @param string $declaration Human-readable declaration type for the error.
-     * @return void
-     */
-    public function assertDeclarationAllowed(string $declaration): void
-    {
-        if ($this->onlyGroups !== [] && $this->activeGroup === null) {
-            throw new LogicException(sprintf(
-                '%s was declared outside a named group during a partial --only run. Wrap it in $this->group(...).',
-                $declaration
-            ));
-        }
-    }
-
-    /**
-     * Reject whole-scope reconciliation during a partial group run.
-     *
-     * @param string $operation
-     * @return void
-     */
-    public function assertCompleteRun(string $operation): void
-    {
-        if ($this->onlyGroups !== []) {
-            throw new LogicException(sprintf(
-                '%s requires a complete Muster run and cannot be used with --only.',
-                $operation
-            ));
-        }
-    }
-
-    /**
-     * Verify that every requested group was declared by the completed Muster.
-     *
-     * @return void
-     */
-    public function assertOnlyGroupsResolved(): void
-    {
-        $unknown = array_values(array_diff($this->onlyGroups, array_keys($this->declaredGroups)));
-
-        if ($unknown === []) {
-            return;
-        }
-
-        $available = array_keys($this->declaredGroups);
-        $guidance = $available === []
-            ? ' This Muster declared no groups.'
-            : ' Available groups: ' . implode(', ', $available) . '.';
-
-        throw new LogicException(sprintf(
-            'Unknown Muster group%s requested by --only: %s.%s',
-            count($unknown) === 1 ? '' : 's',
-            implode(', ', $unknown),
-            $guidance
-        ));
-    }
-
-    /**
-     * Enter one explicit dependency edge in a chained Muster graph.
-     *
-     * @param class-string<Muster> $caller
-     * @param class-string<Muster> $target
-     * @return void
-     */
-    public function enterMusterCall(string $caller, string $target): void
-    {
-        if ($this->musterCallStack === []) {
-            $this->musterCallStack[] = $caller;
-        }
-
-        $active = $this->musterCallStack[array_key_last($this->musterCallStack)];
-        if ($active !== $caller) {
-            throw new LogicException(sprintf(
-                'Muster call stack expected caller [%s], received [%s].',
-                $active,
-                $caller
-            ));
-        }
-
-        if (in_array($target, $this->musterCallStack, true)) {
-            throw new LogicException(sprintf(
-                'Recursive Muster call detected: %s.',
-                implode(' -> ', [...$this->musterCallStack, $target])
-            ));
-        }
-
-        if (isset($this->completedMusterCalls[$target])) {
-            throw new LogicException(sprintf(
-                'Muster [%s] was called more than once in the same execution pass.',
-                $target
-            ));
-        }
-
-        $this->musterCallStack[] = $target;
-    }
-
-    /**
-     * Leave a chained Muster and record successful completion.
-     *
-     * @param class-string<Muster> $target
-     * @param bool $completed
-     * @return void
-     */
-    public function leaveMusterCall(string $target, bool $completed): void
-    {
-        $active = array_pop($this->musterCallStack);
-        if ($active !== $target) {
-            throw new LogicException(sprintf(
-                'Cannot leave Muster [%s]; active call is [%s].',
-                $target,
-                (string) $active
-            ));
-        }
-
-        if ($completed) {
-            $this->completedMusterCalls[$target] = true;
-        }
     }
 }

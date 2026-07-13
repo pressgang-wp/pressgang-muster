@@ -76,14 +76,14 @@ abstract class Muster
      */
     public function group(string $name, callable $declarations): void
     {
-        if (!$this->context->enterGroup($name)) {
+        if (!$this->context->scope()->enterGroup($name)) {
             return;
         }
 
         try {
             $declarations();
         } finally {
-            $this->context->leaveGroup();
+            $this->context->scope()->leaveGroup();
         }
     }
 
@@ -103,7 +103,7 @@ abstract class Muster
         if ($musters === []) {
             throw new LogicException('Muster::call() requires at least one Muster class.');
         }
-        if ($this->context->activeGroup() !== null) {
+        if ($this->context->scope()->activeGroup() !== null) {
             throw new LogicException('Muster::call() cannot run inside a named declaration group.');
         }
 
@@ -115,7 +115,7 @@ abstract class Muster
             $reflection = $this->assertCallableMuster($musterClass);
 
             /** @var class-string<Muster> $musterClass */
-            $this->context->enterMusterCall(static::class, $musterClass);
+            $this->context->callGraph()->enter(static::class, $musterClass);
             $completed = false;
 
             try {
@@ -124,7 +124,7 @@ abstract class Muster
                 $muster->run();
                 $completed = true;
             } finally {
-                $this->context->leaveMusterCall($musterClass, $completed);
+                $this->context->callGraph()->leave($musterClass, $completed);
             }
         }
     }
@@ -183,7 +183,7 @@ abstract class Muster
      */
     public function post(string $postType = 'post'): PostBuilder
     {
-        $this->context->assertDeclarationAllowed('Post builder');
+        $this->context->scope()->assertDeclarationAllowed('Post builder');
 
         return new PostBuilder($this->context, $postType, ownershipScope: static::class);
     }
@@ -207,7 +207,7 @@ abstract class Muster
      */
     public function term(string $taxonomy, ?string $name = null): TermBuilder
     {
-        $this->context->assertDeclarationAllowed('Term builder');
+        $this->context->scope()->assertDeclarationAllowed('Term builder');
 
         return new TermBuilder($this->context, $taxonomy, $name, static::class);
     }
@@ -220,7 +220,7 @@ abstract class Muster
      */
     public function user(?string $login = null): UserBuilder
     {
-        $this->context->assertDeclarationAllowed('User builder');
+        $this->context->scope()->assertDeclarationAllowed('User builder');
 
         return new UserBuilder($this->context, $login, static::class);
     }
@@ -233,7 +233,7 @@ abstract class Muster
      */
     public function option(string $key): OptionBuilder
     {
-        $this->context->assertDeclarationAllowed('Option builder');
+        $this->context->scope()->assertDeclarationAllowed('Option builder');
 
         return new OptionBuilder($this->context, $key, static::class);
     }
@@ -246,7 +246,7 @@ abstract class Muster
      */
     public function menu(string $name): MenuBuilder
     {
-        $this->context->assertDeclarationAllowed('Menu builder');
+        $this->context->scope()->assertDeclarationAllowed('Menu builder');
 
         return new MenuBuilder($this->context, $name, static::class);
     }
@@ -259,7 +259,7 @@ abstract class Muster
      */
     public function attachment(string $slug): AttachmentBuilder
     {
-        $this->context->assertDeclarationAllowed('Attachment builder');
+        $this->context->scope()->assertDeclarationAllowed('Attachment builder');
 
         return new AttachmentBuilder($this->context, $slug, static::class);
     }
@@ -272,7 +272,7 @@ abstract class Muster
      */
     public function comment(int|PostRef|LazyRef $post): CommentBuilder
     {
-        $this->context->assertDeclarationAllowed('Comment builder');
+        $this->context->scope()->assertDeclarationAllowed('Comment builder');
 
         return new CommentBuilder($this->context, $post, static::class);
     }
@@ -284,7 +284,7 @@ abstract class Muster
      */
     public function truncate(): TruncateBuilder
     {
-        $this->context->assertDeclarationAllowed('Truncate builder');
+        $this->context->scope()->assertDeclarationAllowed('Truncate builder');
 
         return new TruncateBuilder($this->context);
     }
@@ -300,7 +300,7 @@ abstract class Muster
      */
     public function resetOwned(): int
     {
-        $this->context->assertCompleteRun('resetOwned()');
+        $this->context->scope()->assertCompleteRun('resetOwned()');
 
         return $this->context->ownership()->reset(static::class);
     }
@@ -317,7 +317,7 @@ abstract class Muster
      */
     public function pruneOwned(array $keepKeys = []): int
     {
-        $this->context->assertCompleteRun('pruneOwned()');
+        $this->context->scope()->assertCompleteRun('pruneOwned()');
 
         return $this->context->ownership()->prune(static::class, $keepKeys);
     }
@@ -341,7 +341,7 @@ abstract class Muster
      */
     public function acfFor(string $target, string $variant = 'populated'): array
     {
-        $this->context->assertDeclarationAllowed('ACF fixture generation');
+        $this->context->scope()->assertDeclarationAllowed('ACF fixture generation');
 
         $generator = new AcfValueGenerator(
             $this->victuals(),
@@ -361,7 +361,7 @@ abstract class Muster
      */
     public function victuals(): Victuals
     {
-        $this->context->assertDeclarationAllowed('Victuals generation');
+        $this->context->scope()->assertDeclarationAllowed('Victuals generation');
 
         if ($this->patternVictuals !== null) {
             return $this->patternVictuals;
@@ -399,7 +399,7 @@ abstract class Muster
      */
     public function pattern(string $name): Pattern
     {
-        $this->context->assertDeclarationAllowed('Pattern');
+        $this->context->scope()->assertDeclarationAllowed('Pattern');
 
         return new Pattern($name, $this->context, $this);
     }
@@ -416,7 +416,7 @@ abstract class Muster
      */
     public function definition(string $name, callable $factory): Definition
     {
-        $this->context->assertDeclarationAllowed('Definition');
+        $this->context->scope()->assertDeclarationAllowed('Definition');
 
         return new Definition($name, $factory);
     }
@@ -429,7 +429,7 @@ abstract class Muster
      */
     public function sequence(mixed ...$values): Sequence
     {
-        $this->context->assertDeclarationAllowed('Sequence');
+        $this->context->scope()->assertDeclarationAllowed('Sequence');
 
         return new Sequence(...$values);
     }
