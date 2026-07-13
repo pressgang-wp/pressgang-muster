@@ -1,8 +1,10 @@
 # Dependencies
 /vendor/
+/tests/integration/vendor/
 
 # Composer
 composer.lock
+!tests/integration/composer.lock
 
 # PHPUnit / testing
 .phpunit.result.cache

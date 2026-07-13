@@ -1,0 +1,26 @@
+{
+  "name": "pressgang-wp/muster-integration-tests",
+  "description": "Isolated real-WordPress test harness for Muster.",
+  "type": "project",
+  "license": "MIT",
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../..",
+      "options": {
+        "symlink": true
+      }
+    }
+  ],
+  "require": {
+    "php": "^8.3",
+    "phpunit/phpunit": "^9.6",
+    "pressgang-wp/muster": "dev-main",
+    "wp-phpunit/wp-phpunit": "^7.0",
+    "yoast/phpunit-polyfills": "^1.1"
+  },
+  "config": {
+    "allow-plugins": false,
+    "sort-packages": true
+  }
+}

@@ -38,5 +38,10 @@
     "psr-4": {
       "PressGang\\Muster\\Tests\\": "tests/"
     }
+  },
+  "scripts": {
+    "test": "@test:unit",
+    "test:unit": "phpunit -c phpunit.xml.dist",
+    "test:integration": "tests/integration/vendor/bin/phpunit -c tests/integration/phpunit.xml.dist"
   }
 }
