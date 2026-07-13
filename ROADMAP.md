@@ -53,10 +53,10 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 #### ACF Adapter
 
 - [x] **LiveAcfAdapter** — real implementation calling `update_field()` (repeater/group values pass through as arrays; `update_sub_field()` granularity still open)
-- [ ] **Repeater fields** — nested array to ACF repeater row format
-- [ ] **Flexible content** — layout-based field groups
-- [ ] **Gallery fields** — array of attachment IDs
-- [ ] **Group fields** — nested key-value mapping
+- [x] **Repeater fields** — nested array to ACF repeater row format
+- [x] **Flexible content** — layout-based field groups
+- [x] **Gallery fields** — array of attachment IDs
+- [x] **Group fields** — nested key-value mapping
 
 #### Data Generation (Victuals)
 
