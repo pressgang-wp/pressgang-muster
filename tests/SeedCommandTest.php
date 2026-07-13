@@ -11,14 +11,10 @@ use PressGang\Muster\Muster;
  */
 final class RecordingSiteMuster extends Muster
 {
-    public function fresh(): void
-    {
-        $GLOBALS['__muster_seed_calls'][] = 'fresh';
-    }
-
     public function run(): void
     {
         $GLOBALS['__muster_seed_calls'][] = 'run';
+        $this->page()->key('seed-page')->title('Seed page')->slug('seed-page')->save();
     }
 }
 
@@ -48,7 +44,7 @@ final class SeedCommandTest extends TestCase
         }
     }
 
-    public function testFreshRequiresAFreshMethod(): void
+    public function testFreshNeedsNoCustomLifecycleMethod(): void
     {
         $bare = new class(\PressGang\Muster\Tests\bareContext()) extends Muster {
             public function run(): void
@@ -56,19 +52,21 @@ final class SeedCommandTest extends TestCase
             }
         };
 
-        try {
-            SeedCommand::handle([$bare::class], ['fresh' => true]);
-            self::fail('Expected failure for missing fresh().');
-        } catch (\WP_CLI_ExitException $e) {
-            self::assertStringContainsString('fresh()', $e->getMessage());
-        }
+        SeedCommand::handle([$bare::class], ['fresh' => true]);
+
+        self::assertContains('Fresh: 0 owned resources cleared.', $GLOBALS['__muster_wp_cli_lines']);
     }
 
-    public function testFreshRunsBeforeRun(): void
+    public function testFreshDeletesOnlyPreviouslyOwnedResourcesBeforeRun(): void
     {
+        SeedCommand::handle([RecordingSiteMuster::class], []);
+        $GLOBALS['__muster_seed_calls'] = [];
+
         SeedCommand::handle([RecordingSiteMuster::class], ['fresh' => true]);
 
-        self::assertSame(['fresh', 'run'], $GLOBALS['__muster_seed_calls']);
+        self::assertSame(['run'], $GLOBALS['__muster_seed_calls']);
+        self::assertContains('Fresh: 1 owned resources cleared.', $GLOBALS['__muster_wp_cli_lines']);
+        self::assertCount(1, $GLOBALS['__muster_wp_posts']);
     }
 
     public function testRunsWithoutFreshByDefault(): void

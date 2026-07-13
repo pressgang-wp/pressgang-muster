@@ -17,8 +17,8 @@ namespace PressGang\Muster\Cli;
  * Usage:
  * `wp capstan seed [<muster-class>] [--fresh] [--seed=<int>] [--dry-run] [--only=<csv>]`
  *
- * - `--fresh` calls the Muster's `fresh()` method (clean-slate reset) before
- *   seeding; errors if the class doesn't define one.
+ * - `--fresh` deletes only resources recorded as owned by the selected Muster
+ *   before seeding.
  * - Remaining flags behave exactly as in `wp capstan muster`.
  */
 final class SeedCommand
@@ -63,17 +63,10 @@ final class SeedCommand
             Invoker::fail($e->getMessage());
         }
 
-        if (isset($assocArgs['fresh']) && ! method_exists($muster, 'fresh')) {
-            Invoker::fail(sprintf(
-                '--fresh requested but %s has no fresh() method — add one that truncates the content it seeds.',
-                $musterClass
-            ));
-        }
-
         try {
             if (isset($assocArgs['fresh'])) {
-                $muster->fresh();
-                Invoker::emit('Fresh: previously seeded content cleared.');
+                $removed = $muster->resetOwned();
+                Invoker::emit(sprintf('Fresh: %d owned resources cleared.', $removed));
             }
 
             $muster->run();
