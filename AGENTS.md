@@ -147,6 +147,9 @@ Existing unowned locator matches require explicit `adopt()` and resources owned
 by another Muster/key must never be stolen.
 
 Running the same Muster twice must not create duplicates.
+New users require an explicit `password()` for creation. It must not be
+reapplied to existing users because WordPress password hashes are not
+comparable with the declared plaintext.
 
 ### Planning
 
@@ -347,6 +350,8 @@ who has never used Muster before, it is not finished.
 ## Testing and Validation
 
 - Prefer end-to-end vertical slice tests over exhaustive unit tests.
+- Use the isolated WordPress integration harness for behavior that stubs cannot
+  prove; never point it at a real site database.
 - Validate:
   - Determinism (same seed means same output)
   - Idempotency (safe re-runs)

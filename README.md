@@ -49,6 +49,7 @@ Requirements:
 - ACF values derived from the active theme's `acf-json` definitions.
 - Conventional `wp capstan seed` and low-level named Muster commands.
 - Deterministic placeholder media for stable visual fixtures.
+- A separate real-WordPress integration suite for core API and database behavior.
 
 Full ecosystem documentation is available in the
 [Muster GitBook guide](https://docs.pressgang.dev/ecosystem/muster).
@@ -82,6 +83,10 @@ change without creating duplicates.
 Post, term, and user builders use **merge-upsert** behaviour: only fields
 explicitly set on the builder are updated. Omitted fields retain their existing
 WordPress values; passing an empty value explicitly clears a field.
+
+New users must declare `->password('initial-password')`. The value is sent only
+to `wp_insert_user()`; reruns never reset an existing user's credentials because
+WordPress stores a one-way hash that cannot be compared with the declaration.
 
 Muster distinguishes this default merge behaviour from two future explicit
 modes: `ensure` (create only) and `replace` (complete declared state). The
@@ -297,3 +302,20 @@ php bin/run-tests.php
 ```
 
 The fallback runner exists to keep the slice testable when Packagist access is unavailable.
+
+The real-WordPress suite is intentionally separate because WordPress 7's test
+harness uses PHPUnit 9 while Muster's unit suite uses PHPUnit 11. Provide a
+disposable MySQL database; the runner downloads matching WordPress core and
+uses its transaction-backed test installation:
+
+```bash
+export WP_TEST_DB_NAME=muster_test
+export WP_TEST_DB_USER=root
+export WP_TEST_DB_PASSWORD=secret
+export WP_TEST_DB_HOST=127.0.0.1
+bin/run-integration-tests.sh
+```
+
+GitHub Actions runs both PHP 8.3/8.4 unit jobs and the WordPress 7.0.1
+integration job. Never point the integration configuration at a real site
+database: the WordPress test harness installs and clears prefixed tables.
