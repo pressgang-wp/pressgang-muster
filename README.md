@@ -37,6 +37,8 @@ Requirements:
 ## What Muster Provides
 
 - WordPress-native builders for posts, pages, terms, users, options, menus, and attachments.
+- Stable logical keys and Muster-scoped ownership independent of mutable slugs.
+- Collision-safe adoption plus owned-only reset and pruning.
 - Merge-safe post, term, and user updates that preserve omitted fields.
 - Seeded fake content through the curated `Victuals` Faker wrapper.
 - Repeatable post Patterns with declared counts and per-pattern seed overrides.
@@ -63,20 +65,25 @@ ORM over WordPress data.
 
 ## Persistence Semantics
 
-Post, term, and user builders use **merge-upsert** behaviour: an existing
-resource is found by its documented natural key, and only fields explicitly set
-on the builder are updated. Omitted fields retain their existing WordPress
-values; passing an empty value explicitly clears a field.
+Every builder created through a Muster requires an explicit `key()`. The
+concrete Muster class and logical key form stable fixture identity; WordPress
+locators such as `post_type + slug`, `taxonomy + slug`, `user_login`, and
+`option_name` remain the native lookup layer. Post and term slugs can therefore
+change without creating duplicates.
+
+Post, term, and user builders use **merge-upsert** behaviour: only fields
+explicitly set on the builder are updated. Omitted fields retain their existing
+WordPress values; passing an empty value explicitly clears a field.
 
 Muster distinguishes this default merge behaviour from two future explicit
 modes: `ensure` (create only) and `replace` (complete declared state). The
 identity and ownership contract is recorded in
 [`docs/adr/0001-resource-identity-ownership-and-persistence.md`](docs/adr/0001-resource-identity-ownership-and-persistence.md).
 
-Natural-key lookup does not yet prove Muster ownership. Until ownership-aware
-reset and pruning ship, treat `truncate()` and `wp capstan seed --fresh` as
-destructive development tools: they remove all content of the selected post
-types or taxonomies, including content created outside Muster.
+An existing natural-key match is a conflict unless it is already owned by the
+same Muster key. Use `->adopt()` once to claim deliberately pre-existing data;
+adoption never steals another key's resource. Ownership records live in the
+non-autoloaded `pressgang_muster_registry` option.
 
 ## Quick Example
 
@@ -90,6 +97,7 @@ final class DemoMuster extends Muster
     public function run(): void
     {
         $this->page()
+            ->key('page:about')
             ->title('About us')
             ->slug('about-us')
             ->status('publish')
@@ -101,6 +109,7 @@ final class DemoMuster extends Muster
             ->count(5)
             ->build(function (int $i) {
                 return $this->post('event')
+                    ->key('event:' . $i)
                     ->title($this->victuals()->headline())
                     ->slug('event-' . $i)
                     ->status('publish');
@@ -109,12 +118,41 @@ final class DemoMuster extends Muster
 }
 ```
 
+## Ownership and Cleanup
+
+```php
+// Explicitly claim an existing unowned page on the first managed run.
+$this->page()
+    ->key('page:about')
+    ->adopt()
+    ->title('About us')
+    ->slug('about-us')
+    ->save();
+
+// Delete only resources owned by this concrete Muster class.
+$this->resetOwned();
+
+// At the end of a complete run, delete owned resources not touched this run.
+$this->pruneOwned();
+
+// Optionally preserve a conditional key that was not declared this run.
+$this->pruneOwned(['page:seasonal']);
+```
+
+`pruneOwned()` is deliberately explicit: call it only after a complete
+declaration run, never after a partial `--only` run. Keys saved in the current
+run—including reserved `acf:*` support keys—are retained automatically. The
+optional array means “also keep,” not “complete manifest.” `truncate()` still
+exists for an intentionally broad development reset, but it is not used by
+`wp capstan seed --fresh`.
+
 ## ACF-Derived Fixtures
 
 Muster can generate field values from the active theme's `acf-json` exports:
 
 ```php
 $this->post('event')
+    ->key('event:example')
     ->title('Example event')
     ->slug('example-event')
     ->acf($this->acfFor('event'))
@@ -124,7 +162,8 @@ $this->post('event')
 Use `$this->acfFor('event', 'minimal')` for required fields only. The default
 `populated` variant fills every generatable field. Media and relational fields
 need real WordPress IDs, so `acfFor()` may provision deterministic supporting
-attachments, posts, or terms.
+attachments, posts, or terms. Those support objects receive reserved `acf:*`
+keys and are owned by the calling Muster.
 
 ## Determinism
 
@@ -154,12 +193,12 @@ Flags:
 - `--seed=<int>` sets global seed.
 - `--dry-run` emits current intent without writes.
 - `--only=<csv>` executes only matching pattern names.
-- `--fresh` is available on `wp capstan seed` and calls the theme Muster's
-  `fresh()` method before `run()`.
+- `--fresh` is available on `wp capstan seed` and deletes only resources owned
+  by that concrete Muster class before `run()`; no custom `fresh()` method is required.
 
 `--only` currently filters Patterns only; direct builder calls still execute.
-Do not combine `--fresh` and `--only` unless the Muster's `fresh()` method is
-deliberately compatible with a partial seed.
+Combining `--fresh` and `--only` intentionally rebuilds only the selected
+patterns after clearing all resources owned by that Muster.
 
 ## Demo Scripts
 

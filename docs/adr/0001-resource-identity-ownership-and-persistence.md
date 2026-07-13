@@ -34,9 +34,16 @@ Resource identity has two distinct parts:
 1. A stable Muster logical key, independent of mutable values such as a slug.
 2. A WordPress-native locator used to find the current object.
 
-A later ownership slice will persist logical keys and owner information. Until
-that is implemented, builders continue to locate resources by their documented
-natural keys, but destructive pruning and replacement must not be added.
+Builders created by a Muster must declare a logical `key()`. Muster persists the
+concrete Muster class, logical key, resource kind, WordPress ID, subtype, and
+current locator in a non-autoloaded WordPress option. Natural keys remain the
+WordPress-native discovery mechanism, but do not imply ownership.
+
+When a natural-key match exists without an ownership claim, saving fails unless
+the declaration explicitly calls `adopt()`. Adoption may claim an unowned
+resource but may never steal a resource registered to another Muster/key.
+Owned reset and pruning operate only on registry entries for the concrete
+Muster class.
 
 ## Consequences
 
@@ -44,7 +51,7 @@ natural keys, but destructive pruning and replacement must not be added.
 - Clearing a field is explicit: callers pass the empty value intentionally.
 - Builders must track whether a value was supplied instead of manufacturing
   update defaults.
-- Ownership-aware adoption, pruning, reset, and conflict reporting are required
-  before Muster can safely converge collections or delete stale resources.
+- Ownership-aware adoption, pruning, reset, and conflict reporting allow Muster
+  to converge collections without selecting unrelated WordPress content.
 - Direct table mapping and ORM-style persistence remain out of scope; drivers
   continue to use WordPress and plugin APIs.

@@ -18,6 +18,7 @@ before the persistence architecture should be considered stable.
 - **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, `--fresh`, visible dry-run intent, seed and Pattern filters
 - **ACF adapter interface** — pluggable ACF integration (NullAcfAdapter ships)
 - **Persistence contract** — documented `ensure`, `merge`, and `replace` semantics; merge is the current default
+- **Ownership contract** — required logical keys, explicit adoption, collision detection, and owned-only reset/prune
 - **Test suite** — WordPress API stubs and deterministic Faker coverage
 
 ---
@@ -30,9 +31,9 @@ before the persistence architecture should be considered stable.
 
 - [x] **Merge-safe updates** — omitted post, term, and user fields retain their existing values
 - [x] **Persistence ADR** — define ensure/merge/replace and separate logical identity from WordPress locators
-- [ ] **Logical keys and ownership** — stable Muster identity independent of mutable slugs
-- [ ] **Collision policy** — refuse unowned natural-key matches unless explicitly adopted
-- [ ] **Owned reset/prune** — delete only resources owned by the selected Muster scenario
+- [x] **Logical keys and ownership** — stable Muster identity independent of mutable slugs
+- [x] **Collision policy** — refuse unowned natural-key matches unless explicitly adopted
+- [x] **Owned reset/prune** — delete only resources owned by the selected Muster scenario
 - [ ] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
 - [ ] **Structured result output** — operation summaries and `--format=json`
 - [ ] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns

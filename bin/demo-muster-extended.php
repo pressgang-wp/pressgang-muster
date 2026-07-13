@@ -65,6 +65,7 @@ $muster = new class($context) extends Muster {
     public function run(): void
     {
         $this->user('demo-editor')
+            ->key('user:demo-editor')
             ->email('demo-editor@example.test')
             ->displayName('Demo Editor')
             ->role('editor')
@@ -72,12 +73,14 @@ $muster = new class($context) extends Muster {
             ->save();
 
         $this->term('category', 'Featured Events')
+            ->key('term:featured-events')
             ->slug('featured-events')
             ->description('Events highlighted by the Muster demo script.')
             ->meta(['highlight' => 1])
             ->save();
 
         $this->option('muster_demo_mode')
+            ->key('option:demo-mode')
             ->value('live')
             ->autoload(false)
             ->save();
@@ -87,6 +90,7 @@ $muster = new class($context) extends Muster {
             ->seed(4242)
             ->build(function (int $i) {
                 return $this->post('event')
+                    ->key('event:' . $i)
                     ->title($this->victuals()->headline())
                     ->slug('event-ext-' . $i)
                     ->status('publish')

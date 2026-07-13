@@ -53,6 +53,7 @@ If something is surprising, it is probably wrong.
 
 ```php
 $this->page()
+    ->key('page:about')
     ->title('About')
     ->slug('about')
     ->content($this->victuals()->paragraphs(2))
@@ -67,6 +68,7 @@ $this->pattern('event')
     ->seed(1978)
     ->build(function (int $i) {
         return $this->event()
+            ->key("event:{$i}")
             ->title($this->victuals()->headline())
             ->slug("event-{$i}")
             ->meta([
@@ -113,10 +115,15 @@ Each Pattern run receives its own Victuals instance.
 ### Idempotency
 
 Every builder must have a clear identity rule:
-- Posts: `post_type + post_name` (slug)
-- Terms: `taxonomy + slug`
-- Users: `user_login`
-- Options: `option_name`
+- Public Muster builders: concrete Muster class + explicit logical `key()`
+- Posts: WordPress locator `post_type + post_name` (slug)
+- Terms: WordPress locator `taxonomy + slug`
+- Users: WordPress locator `user_login`
+- Options: WordPress locator `option_name`
+
+Logical keys are stable fixture identity; WordPress locators may be mutable.
+Existing unowned locator matches require explicit `adopt()` and resources owned
+by another Muster/key must never be stolen.
 
 Running the same Muster twice must not create duplicates.
 

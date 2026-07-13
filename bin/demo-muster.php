@@ -50,6 +50,7 @@ $muster = new class($context) extends Muster {
             ->seed(1978)
             ->build(fn (int $i) =>
                 $this->post('event')
+                    ->key("event:{$i}")
                     ->title($this->victuals()->headline())
                     ->slug("event-{$i}")
                     ->status('publish')
