@@ -10,10 +10,10 @@ namespace PressGang\Muster\Cli;
  * production guard) see {@see SeedCommand}.
  *
  * Usage:
- * `wp capstan muster <muster-class> [--seed=<int>] [--dry-run] [--only=<csv>]`
+ * `wp capstan muster <muster-class> [--seed=<int>] [--dry-run] [--only=<csv>] [--format=json]`
  *
- * Any thrown exception is surfaced as a single failure line so command output
- * remains deterministic and script-friendly.
+ * The command always plans first. Unless `--dry-run` is present, it then runs
+ * a revalidated application pass. `--format=json` emits one structured payload.
  */
 final class MusterCommand
 {
@@ -48,13 +48,19 @@ final class MusterCommand
             Invoker::fail('Muster class argument is required.');
         }
 
-        try {
-            $muster = Invoker::makeMuster($musterClass, Invoker::contextFromFlags($assocArgs));
-            $muster->run();
+        $result = Invoker::reconcile($musterClass, $assocArgs);
+        Invoker::emitReconciliation($musterClass, $result, $assocArgs);
 
-            Invoker::emit('Muster completed.');
-        } catch (\Throwable $e) {
-            Invoker::fail('Muster failed: ' . $e->getMessage());
+        if ($result['error'] !== null) {
+            if (Invoker::isJson($assocArgs)) {
+                Invoker::halt();
+            }
+
+            Invoker::fail('Muster failed: ' . $result['error']->getMessage());
+        }
+
+        if (!Invoker::isJson($assocArgs)) {
+            Invoker::emit(isset($assocArgs['dry-run']) ? 'Muster plan complete.' : 'Muster applied.');
         }
     }
 }

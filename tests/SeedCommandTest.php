@@ -54,7 +54,7 @@ final class SeedCommandTest extends TestCase
 
         SeedCommand::handle([$bare::class], ['fresh' => true]);
 
-        self::assertContains('Fresh: 0 owned resources cleared.', $GLOBALS['__muster_wp_cli_lines']);
+        self::assertContains('  Summary: create=0 update=0 keep=0 prune=0 conflict=0', $GLOBALS['__muster_wp_cli_lines']);
     }
 
     public function testFreshDeletesOnlyPreviouslyOwnedResourcesBeforeRun(): void
@@ -64,8 +64,8 @@ final class SeedCommandTest extends TestCase
 
         SeedCommand::handle([RecordingSiteMuster::class], ['fresh' => true]);
 
-        self::assertSame(['run'], $GLOBALS['__muster_seed_calls']);
-        self::assertContains('Fresh: 1 owned resources cleared.', $GLOBALS['__muster_wp_cli_lines']);
+        self::assertSame(['run', 'run'], $GLOBALS['__muster_seed_calls']);
+        self::assertContains('  Summary: create=1 update=0 keep=0 prune=1 conflict=0', $GLOBALS['__muster_wp_cli_lines']);
         self::assertCount(1, $GLOBALS['__muster_wp_posts']);
     }
 
@@ -73,7 +73,7 @@ final class SeedCommandTest extends TestCase
     {
         SeedCommand::handle([RecordingSiteMuster::class], []);
 
-        self::assertSame(['run'], $GLOBALS['__muster_seed_calls']);
+        self::assertSame(['run', 'run'], $GLOBALS['__muster_seed_calls']);
     }
 }
 

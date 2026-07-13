@@ -30,10 +30,8 @@ final class PatternRunner
 
         if ($pattern->context()->dryRun()) {
             $pattern->context()->logger()->info(
-                sprintf('Dry run pattern [%s] for %d iterations.', $pattern->name(), $iterations)
+                sprintf('Planning pattern [%s] for %d iterations.', $pattern->name(), $iterations)
             );
-
-            return;
         }
 
         $muster->beginPatternVictualsScope($victuals);

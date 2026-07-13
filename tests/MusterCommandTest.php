@@ -39,6 +39,11 @@ namespace {
                 $GLOBALS['__muster_wp_cli_lines'][] = $message;
                 throw new WP_CLI_ExitException($message);
             }
+
+            public static function halt(int $exitCode): never
+            {
+                throw new WP_CLI_ExitException('halt:' . $exitCode);
+            }
         }
     }
 }
@@ -46,8 +51,11 @@ namespace {
 namespace PressGang\Muster\Tests {
     use WP_CLI_ExitException;
     use PHPUnit\Framework\TestCase;
+    use PressGang\Muster\Builders\PostBuilder;
     use PressGang\Muster\Cli\MusterCommand;
     use PressGang\Muster\Muster;
+    use PressGang\Muster\MusterContext;
+    use PressGang\Muster\Victuals\VictualsFactory;
 
     final class MusterCommandTest extends TestCase
     {
@@ -62,8 +70,8 @@ namespace PressGang\Muster\Tests {
 
             MusterCommand::handle([TestMusterForCli::class], ['seed' => '1978']);
 
-            self::assertSame(1, $GLOBALS['__muster_cli_test_run_count']);
-            self::assertSame('Muster completed.', $GLOBALS['__muster_wp_cli_lines'][0] ?? '');
+            self::assertSame(2, $GLOBALS['__muster_cli_test_run_count']);
+            self::assertContains('Muster applied.', $GLOBALS['__muster_wp_cli_lines']);
         }
 
     public function testHandleReportsMissingClass(): void
@@ -73,7 +81,7 @@ namespace PressGang\Muster\Tests {
         try {
             MusterCommand::handle(['Missing\\ClassName'], []);
         } finally {
-            self::assertStringContainsString('Muster failed:', (string) ($GLOBALS['__muster_wp_cli_lines'][0] ?? ''));
+            self::assertStringContainsString('Muster failed:', (string) end($GLOBALS['__muster_wp_cli_lines']));
         }
     }
 
@@ -95,16 +103,65 @@ namespace PressGang\Muster\Tests {
 
             MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed']);
 
-            self::assertSame(1, $GLOBALS['__muster_cli_test_run_count']);
-            self::assertSame(1, $GLOBALS['__muster_cli_test_pattern_counter']);
+            self::assertSame(2, $GLOBALS['__muster_cli_test_run_count']);
+            self::assertSame(2, $GLOBALS['__muster_cli_test_pattern_counter']);
         }
 
         public function testDryRunEmitsVisibleIntent(): void
         {
+            $GLOBALS['__muster_cli_test_run_count'] = 0;
             MusterCommand::handle([TestMusterForCli::class], ['dry-run' => true]);
 
-            self::assertContains('Dry run pattern [allowed] for 1 iterations.', $GLOBALS['__muster_wp_cli_lines']);
-            self::assertContains('Muster completed.', $GLOBALS['__muster_wp_cli_lines']);
+            self::assertContains('Planning pattern [allowed] for 1 iterations.', $GLOBALS['__muster_wp_cli_lines']);
+            self::assertContains('Muster plan complete.', $GLOBALS['__muster_wp_cli_lines']);
+            self::assertSame(1, $GLOBALS['__muster_cli_test_run_count']);
+            self::assertCount(0, $GLOBALS['__muster_wp_posts']);
+        }
+
+        public function testJsonFormatEmitsOneStructuredPayload(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed', 'format' => 'json']);
+
+            self::assertCount(1, $GLOBALS['__muster_wp_cli_lines']);
+            $payload = json_decode($GLOBALS['__muster_wp_cli_lines'][0], true, 512, JSON_THROW_ON_ERROR);
+
+            self::assertSame('applied', $payload['status']);
+            self::assertSame(1, $payload['plan']['summary']['create']);
+            self::assertSame(1, $payload['apply']['summary']['create']);
+        }
+
+        public function testDryRunJsonContainsPlanOnly(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], [
+                'only' => 'allowed',
+                'dry-run' => true,
+                'format' => 'json',
+            ]);
+
+            self::assertCount(1, $GLOBALS['__muster_wp_cli_lines']);
+            $payload = json_decode($GLOBALS['__muster_wp_cli_lines'][0], true, 512, JSON_THROW_ON_ERROR);
+
+            self::assertSame('planned', $payload['status']);
+            self::assertNull($payload['apply']);
+            self::assertCount(0, $GLOBALS['__muster_wp_posts']);
+        }
+
+        public function testJsonConflictStillEmitsOnlyStructuredPayload(): void
+        {
+            $context = new MusterContext(new VictualsFactory());
+            (new PostBuilder($context, 'event'))->title('Editorial')->slug('allowed-1')->save();
+
+            try {
+                MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed', 'format' => 'json']);
+                self::fail('Expected conflict exit.');
+            } catch (WP_CLI_ExitException $error) {
+                self::assertSame('halt:1', $error->getMessage());
+            }
+
+            self::assertCount(1, $GLOBALS['__muster_wp_cli_lines']);
+            $payload = json_decode($GLOBALS['__muster_wp_cli_lines'][0], true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame('conflict', $payload['status']);
+            self::assertSame(1, $payload['plan']['summary']['conflict']);
         }
     }
 

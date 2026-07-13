@@ -15,10 +15,12 @@ namespace PressGang\Muster\Cli;
  * and that refusal is not flag-overridable by design.
  *
  * Usage:
- * `wp capstan seed [<muster-class>] [--fresh] [--seed=<int>] [--dry-run] [--only=<csv>]`
+ * `wp capstan seed [<muster-class>] [--fresh] [--seed=<int>] [--dry-run] [--only=<csv>] [--format=json]`
  *
  * - `--fresh` deletes only resources recorded as owned by the selected Muster
  *   before seeding.
+ * - Every invocation plans first; `--dry-run` skips the application pass.
+ * - `--format=json` emits one machine-readable reconciliation payload.
  * - Remaining flags behave exactly as in `wp capstan muster`.
  */
 final class SeedCommand
@@ -54,26 +56,19 @@ final class SeedCommand
 
         $musterClass = (string) ($args[0] ?? self::defaultMusterClass());
 
-        // Validation failures exit directly; only RUNTIME failures below get
-        // the "Seed failed:" wrapper — keeping fail() calls out of the try
-        // avoids re-wrapping our own exit exception.
-        try {
-            $muster = Invoker::makeMuster($musterClass, Invoker::contextFromFlags($assocArgs));
-        } catch (\InvalidArgumentException $e) {
-            Invoker::fail($e->getMessage());
-        }
+        $result = Invoker::reconcile($musterClass, $assocArgs, isset($assocArgs['fresh']));
+        Invoker::emitReconciliation($musterClass, $result, $assocArgs);
 
-        try {
-            if (isset($assocArgs['fresh'])) {
-                $removed = $muster->resetOwned();
-                Invoker::emit(sprintf('Fresh: %d owned resources cleared.', $removed));
+        if ($result['error'] !== null) {
+            if (Invoker::isJson($assocArgs)) {
+                Invoker::halt();
             }
 
-            $muster->run();
+            Invoker::fail('Seed failed: ' . $result['error']->getMessage());
+        }
 
-            Invoker::emit('Seed complete.');
-        } catch (\Throwable $e) {
-            Invoker::fail('Seed failed: ' . $e->getMessage());
+        if (!Invoker::isJson($assocArgs)) {
+            Invoker::emit(isset($assocArgs['dry-run']) ? 'Seed plan complete.' : 'Seed applied.');
         }
     }
 
