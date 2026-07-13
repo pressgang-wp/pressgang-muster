@@ -5,6 +5,7 @@ namespace PressGang\Muster\IntegrationTests;
 use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Testing\AssertsWordPressFixtures;
 use PressGang\Muster\Victuals\VictualsFactory;
 
 /**
@@ -92,6 +93,8 @@ final class PrunableScenario extends Muster
  */
 final class ReconciliationIntegrationTest extends \WP_UnitTestCase
 {
+    use AssertsWordPressFixtures;
+
     public function set_up(): void
     {
         parent::set_up();
@@ -113,9 +116,9 @@ final class ReconciliationIntegrationTest extends \WP_UnitTestCase
     {
         $this->runCoreScenario();
 
-        $post = get_page_by_path('launch-event', OBJECT, 'muster_event');
-        $term = get_term_by('slug', 'talk', 'muster_type');
-        $user = get_user_by('login', 'muster_editor');
+        $post = $this->assertPostExists('launch-event', 'muster_event');
+        $term = $this->assertTermExists('muster_type', 'talk');
+        $user = $this->assertUserExists('muster_editor');
 
         self::assertInstanceOf(\WP_Post::class, $post);
         self::assertInstanceOf(\WP_Term::class, $term);
