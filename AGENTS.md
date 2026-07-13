@@ -38,6 +38,9 @@ If something is surprising, it is probably wrong.
 
 - **Muster**
   Orchestrates a named WordPress content provisioning or fixture run.
+- **Groups**
+  Named callback boundaries that make every declaration inside them selectable
+  as one unit through `--only`.
 - **Victuals**
   Curated wrapper around Faker that provides WordPress-shaped, locale-aware, deterministic fake data.
 - **Patterns**
@@ -56,34 +59,42 @@ If something is surprising, it is probably wrong.
 ### Simple post creation
 
 ```php
-$this->page()
-    ->key('page:about')
-    ->title('About')
-    ->slug('about')
-    ->content($this->victuals()->paragraphs(2))
-    ->save();
+$this->group('pages', function (): void {
+    $this->page()
+        ->key('page:about')
+        ->title('About')
+        ->slug('about')
+        ->content($this->victuals()->paragraphs(2))
+        ->save();
+});
 ```
 
 ### Deterministic batch creation via Pattern
 
 ```php
-$this->pattern('event')
-    ->count(12)
-    ->seed(1978)
-    ->build(function (int $i) {
-        return $this->event()
-            ->key("event:{$i}")
-            ->title($this->victuals()->headline())
-            ->slug("event-{$i}")
-            ->meta([
-                'starts_at' => $this->victuals()
-                    ->dateBetween('+1 week', '+6 months')
-                    ->format('Y-m-d H:i:s'),
-            ]);
-    });
+$this->group('events', function (): void {
+    $this->pattern('event')
+        ->count(12)
+        ->seed(1978)
+        ->build(function (int $i) {
+            return $this->event()
+                ->key("event:{$i}")
+                ->title($this->victuals()->headline())
+                ->slug("event-{$i}")
+                ->meta([
+                    'starts_at' => $this->victuals()
+                        ->dateBetween('+1 week', '+6 months')
+                        ->format('Y-m-d H:i:s'),
+                ]);
+        });
+});
 ```
 
 Rules:
+- `--only` selects group names, not Pattern names.
+- Skipped group callbacks must not execute.
+- Groups must be named explicitly, unique within a pass, and non-nested.
+- Partial runs must reject ungrouped declarations and whole-scope reset/prune.
 - Patterns must be explicit.
 - `count()` is required.
 - `seed()` controls randomness only, not data selection.
@@ -97,8 +108,8 @@ Rules:
 - Seeds control random output, not execution order or persistence rules.
 - Seed precedence:
   1. Pattern seed
-  2. Muster-level seed (if defined)
-  3. CLI seed (when implemented)
+  2. Per-pattern context override (programmatic)
+  3. Context seed, including CLI `--seed`
   4. No seed, which means non-deterministic output
 
 Each Pattern run receives its own Victuals instance.

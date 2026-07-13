@@ -4,8 +4,8 @@
 
 Muster is a WordPress-native orchestrator for deterministic content
 provisioning and development fixtures. Ownership-aware reconciliation and the
-read-only plan/apply lifecycle are implemented; named declaration groups and a
-deterministic clock are the next major stability work.
+read-only plan/apply lifecycle and named declaration groups are implemented; a
+deterministic clock is the next major stability work.
 
 ### Implemented
 
@@ -15,11 +15,12 @@ deterministic clock are the next major stability work.
 - **OptionBuilder** — WordPress options (upsert by `option_name`)
 - **Patterns** — batch factory runner with `count()`, per-pattern `seed()`, iteration index
 - **Victuals** — seeded Faker wrapper (en_GB) with WordPress-friendly helpers
-- **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, owned `--fresh`, read-only planning, JSON reports, seed and Pattern filters
+- **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, owned `--fresh`, read-only planning, JSON reports, seed and declaration-group filters
 - **ACF adapter interface** — pluggable ACF integration (NullAcfAdapter ships)
 - **Persistence contract** — documented `ensure`, `merge`, and `replace` semantics; merge is the current default
 - **Ownership contract** — required logical keys, explicit adoption, collision detection, and owned-only reset/prune
 - **Reconciliation reports** — plan/apply passes with create/update/keep/prune/conflict operations and JSON output
+- **Named groups** — explicit callback boundaries that make partial `--only` runs complete and side-effect free outside the selection
 - **Test suite** — WordPress API stubs and deterministic Faker coverage
 
 ---
@@ -37,7 +38,7 @@ deterministic clock are the next major stability work.
 - [x] **Owned reset/prune** — delete only resources owned by the selected Muster scenario
 - [x] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
 - [x] **Structured result output** — operation summaries and `--format=json`
-- [ ] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns
+- [x] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns
 - [ ] **Deterministic clock** — separate the fixture epoch from Faker's random seed
 - [ ] **WordPress integration suite** — verify core API behaviour against a real WordPress runtime
 

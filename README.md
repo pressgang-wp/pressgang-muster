@@ -41,6 +41,7 @@ Requirements:
 - Collision-safe adoption plus owned-only reset and pruning.
 - Read-only planning followed by revalidated application with operation summaries.
 - Machine-readable reconciliation output through `--format=json`.
+- Named declaration groups for safe, complete `--only` runs.
 - Merge-safe post, term, and user updates that preserve omitted fields.
 - Seeded fake content through the curated `Victuals` Faker wrapper.
 - Repeatable post Patterns with declared counts and per-pattern seed overrides.
@@ -57,6 +58,8 @@ Full ecosystem documentation is available in the
 - `Muster`: orchestration entrypoint where your seed flow lives.
 - `Victuals`: curated Faker wrapper with UK-leaning defaults.
 - `Pattern`: repeatable batch runner with `count()` and optional per-pattern seed.
+- `Group`: explicit callback boundary selected by `--only`; skipped callbacks are
+  not evaluated.
 - `Builders`: explicit WordPress resource writers. Posts, terms, and users use
   merge-upsert behavior; menus rebuild their items, attachments are reused by
   slug, and `truncate()` is an explicitly destructive reset.
@@ -103,10 +106,10 @@ reported as updates when the resource already exists.
 
 ```text
 Plan:
-  CREATE   post       page:about -> about-us
+  CREATE   post       [pages] page:about -> about-us
   Summary: create=1 update=0 keep=0 prune=0 conflict=0
 Apply:
-  CREATE   post       page:about -> about-us
+  CREATE   post       [pages] page:about -> about-us
   Summary: create=1 update=0 keep=0 prune=0 conflict=0
 ```
 
@@ -126,24 +129,28 @@ final class DemoMuster extends Muster
 {
     public function run(): void
     {
-        $this->page()
-            ->key('page:about')
-            ->title('About us')
-            ->slug('about-us')
-            ->status('publish')
-            ->content($this->victuals()->paragraphs(3))
-            ->save();
+        $this->group('pages', function (): void {
+            $this->page()
+                ->key('page:about')
+                ->title('About us')
+                ->slug('about-us')
+                ->status('publish')
+                ->content($this->victuals()->paragraphs(3))
+                ->save();
+        });
 
-        $this->pattern('events')
-            ->seed(1201)
-            ->count(5)
-            ->build(function (int $i) {
-                return $this->post('event')
-                    ->key('event:' . $i)
-                    ->title($this->victuals()->headline())
-                    ->slug('event-' . $i)
-                    ->status('publish');
-            });
+        $this->group('events', function (): void {
+            $this->pattern('event-fixtures')
+                ->seed(1201)
+                ->count(5)
+                ->build(function (int $i) {
+                    return $this->post('event')
+                        ->key('event:' . $i)
+                        ->title($this->victuals()->headline())
+                        ->slug('event-' . $i)
+                        ->status('publish');
+                });
+        });
     }
 }
 ```
@@ -169,12 +176,12 @@ $this->pruneOwned();
 $this->pruneOwned(['page:seasonal']);
 ```
 
-`pruneOwned()` is deliberately explicit: call it only after a complete
-declaration run, never after a partial `--only` run. Keys saved in the current
-run—including reserved `acf:*` support keys—are retained automatically. The
-optional array means “also keep,” not “complete manifest.” `truncate()` still
-exists for an intentionally broad development reset, but it is not used by
-`wp capstan seed --fresh`.
+`pruneOwned()` is deliberately explicit and rejects partial `--only` runs,
+because declarations in skipped groups cannot be treated as stale. Keys saved
+in a complete run—including reserved `acf:*` support keys—are retained
+automatically. The optional array means “also keep,” not “complete manifest.”
+`truncate()` still exists for an intentionally broad development reset, but it
+is not used by `wp capstan seed --fresh`.
 
 ## ACF-Derived Fixtures
 
@@ -226,13 +233,21 @@ Flags:
 - `--dry-run` performs the complete read-only plan and skips application.
 - `--format=json` emits one structured payload containing plan/apply operations
   and summaries, with no human log lines.
-- `--only=<csv>` executes only matching pattern names.
+- `--only=<csv>` executes only matching declaration group names.
 - `--fresh` is available on `wp capstan seed` and deletes only resources owned
   by that concrete Muster class before `run()`; no custom `fresh()` method is required.
 
-`--only` currently filters Patterns only; direct builder calls still execute.
-Combining `--fresh` and `--only` intentionally rebuilds only the selected
-patterns after clearing all resources owned by that Muster.
+Use `$this->group('name', function (): void { ... });` around every independently
+selectable section. A skipped callback is never invoked, so direct builders,
+Patterns, Victuals calls, and ACF fixture generation inside it perform no reads,
+writes, or random draws. Group names must be non-empty, unique within a pass,
+and cannot be nested. Unknown `--only` names fail instead of silently doing
+nothing. During a partial run, declarations outside a group, `resetOwned()`,
+and `pruneOwned()` also fail loudly.
+
+Without `--only`, ungrouped declarations remain valid. Combining `--fresh` and
+`--only` intentionally clears every resource owned by the Muster and then
+rebuilds only the selected groups.
 
 ## Demo Scripts
 
