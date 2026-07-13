@@ -85,6 +85,7 @@ final class OptionBuilder implements PersistableDeclaration
     public function save(): OptionRef
     {
         $intent = $this->ownershipIntent();
+        $this->context->debugDeclaration('Option', ['value', 'autoload']);
 
         if ($intent !== null && $this->key === OwnershipRegistry::OPTION) {
             throw new LogicException('Muster cannot manage its own ownership registry option.');

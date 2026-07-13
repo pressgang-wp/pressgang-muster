@@ -161,6 +161,14 @@ final class AttachmentBuilder implements PersistableDeclaration
         $intent = $this->ownershipIntent();
         $parentId = $this->parent === null ? null : $this->resolvePostId($this->parent);
         $featuredOnId = $this->featuredOn === null ? null : $this->resolvePostId($this->featuredOn);
+        $this->context->debugDeclaration('Attachment', array_keys(array_filter([
+            'slug' => true,
+            'source' => $this->sourcePath !== null || $this->placeholder,
+            'title' => $this->title !== null,
+            'alt' => $this->alt !== null,
+            'parent' => $this->parent !== null,
+            'featured_on' => $this->featuredOn !== null,
+        ])));
 
         if (!function_exists('get_posts')) {
             throw new RuntimeException('get_posts() is required to plan or save attachments.');

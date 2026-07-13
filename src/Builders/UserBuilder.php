@@ -235,6 +235,11 @@ final class UserBuilder implements PersistableDeclaration
             }
         }
 
+        $this->context->debugDeclaration('User', [
+            ...array_keys($attributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta'] ?? []))),
+        ]);
+
         $operation = $this->userOperation($existing, $attributes, $owned);
         $plannedId = $existingId ?? 0;
 

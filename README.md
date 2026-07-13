@@ -326,7 +326,8 @@ Flags:
 - `--dry-run` performs the complete read-only plan and skips application.
 - `--format=json` emits one structured payload containing plan/apply operations
   and summaries, with no human log lines.
-- `--verbose` exposes builder diagnostics and full operation identity details.
+- `--verbose` exposes declared field names and full operation identity details;
+  field values are never logged.
 - `--quiet` suppresses successful human output; errors remain visible. JSON
   output is still emitted when explicitly requested.
 - `--only=<csv>` executes only matching declaration group names.

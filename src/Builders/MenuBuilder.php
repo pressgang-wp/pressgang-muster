@@ -150,6 +150,11 @@ final class MenuBuilder implements PersistableDeclaration
 
         $intent = $this->ownershipIntent();
         $resolvedItems = $this->resolveItems();
+        $this->context->debugDeclaration('Menu', [
+            'name',
+            ...($resolvedItems === [] ? [] : ['items']),
+            ...($this->locations === [] ? [] : ['locations']),
+        ]);
 
         $natural = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
         $naturalId = is_object($natural) && isset($natural->term_id) ? (int) $natural->term_id : null;

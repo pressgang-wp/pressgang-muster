@@ -100,7 +100,7 @@ testing utilities all have executable coverage.
 
 - [x] **WpCliLogger** — pipes visible intent to `WP_CLI::log()` and details to `WP_CLI::debug()`
 - [x] **Progress reporting** — bounded per-pattern progress output during long runs
-- [x] **Verbose/quiet modes** — `--verbose` details and `--quiet` successful-output suppression
+- [x] **Verbose/quiet modes** — `--verbose` per-field-name diagnostics and `--quiet` successful-output suppression
 
 #### Testing Utilities
 

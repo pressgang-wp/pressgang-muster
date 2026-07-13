@@ -162,6 +162,25 @@ final class MusterContext
     }
 
     /**
+     * Log declared field names for verbose diagnostics without exposing values.
+     *
+     * @param string $resource
+     * @param array<int, string|int> $fields
+     * @return void
+     */
+    public function debugDeclaration(string $resource, array $fields): void
+    {
+        $fields = array_values(array_unique(array_map('strval', $fields)));
+        sort($fields);
+
+        $this->logger->debug(sprintf(
+            '%s declaration fields: %s.',
+            $resource,
+            $fields === [] ? '(none)' : implode(', ', $fields)
+        ));
+    }
+
+    /**
      * @return AcfAdapterInterface
      */
     public function acf(): AcfAdapterInterface

@@ -226,6 +226,12 @@ final class TermBuilder implements PersistableDeclaration
             $attributes['name'] = (string) $this->payload['name'];
         }
 
+        $this->context->debugDeclaration('Term', [
+            ...array_keys($attributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta'] ?? []))),
+            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
+        ]);
+
         $existingId = $existing !== false && $existing !== null && isset($existing->term_id)
             ? (int) $existing->term_id
             : null;

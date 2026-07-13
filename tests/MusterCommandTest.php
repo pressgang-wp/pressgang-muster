@@ -137,6 +137,11 @@ namespace PressGang\Muster\Tests {
                 $GLOBALS['__muster_wp_cli_lines'],
                 static fn (string $line): bool => str_contains($line, 'scope=') && str_contains($line, 'key=allowed-1')
             ));
+            self::assertNotEmpty(array_filter(
+                $GLOBALS['__muster_wp_cli_lines'],
+                static fn (string $line): bool => str_contains($line, 'Post declaration fields:')
+                    && str_contains($line, 'post_title')
+            ));
         }
 
         public function testLongPatternsEmitBoundedProgress(): void

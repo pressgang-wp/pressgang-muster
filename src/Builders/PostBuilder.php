@@ -283,6 +283,13 @@ final class PostBuilder implements PersistableDeclaration
             $resolvedTaxInput[$taxonomy] = $this->resolveTerms($terms, $taxonomy);
         }
 
+        $this->context->debugDeclaration('Post', [
+            ...array_keys($attributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta_input'] ?? []))),
+            ...array_map(static fn (string $key): string => 'terms.' . $key, array_keys($resolvedTaxInput)),
+            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
+        ]);
+
         $operation = $this->postOperation($existingId, $attributes, $owned, $slug);
         $plannedId = $existingId ?? 0;
 

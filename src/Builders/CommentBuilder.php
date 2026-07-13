@@ -224,6 +224,10 @@ final class CommentBuilder implements PersistableDeclaration
 
         $existingId = $existing === null ? null : (int) $existing->comment_ID;
         $writeAttributes = $this->persistenceAttributes($attributes, $existingId !== null);
+        $this->context->debugDeclaration('Comment', [
+            ...array_keys($writeAttributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta'] ?? []))),
+        ]);
         $coreChanged = $existing === null || $this->attributesDiffer($existing, $writeAttributes);
         $operation = $this->operation($existing, $writeAttributes, $owned);
         $plannedId = $existingId ?? 0;
