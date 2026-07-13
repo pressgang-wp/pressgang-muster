@@ -61,6 +61,32 @@ final class PostBuilderTest extends TestCase
         self::assertSame('publish', $stored['post_status']);
     }
 
+    public function testUpdatePreservesFieldsThatWereNotSupplied(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new PostBuilder($context, 'event'))
+            ->title('Original')
+            ->slug('merge-post')
+            ->content('Keep this body')
+            ->excerpt('Keep this excerpt')
+            ->status('publish')
+            ->parent(7)
+            ->save();
+
+        (new PostBuilder($context, 'event'))
+            ->slug('merge-post')
+            ->title('Updated title')
+            ->save();
+
+        $stored = $GLOBALS['__muster_wp_posts']['event::merge-post'];
+        self::assertSame('Updated title', $stored['post_title']);
+        self::assertSame('Keep this body', $stored['post_content']);
+        self::assertSame('Keep this excerpt', $stored['post_excerpt']);
+        self::assertSame('publish', $stored['post_status']);
+        self::assertSame(7, $stored['post_parent']);
+    }
+
     public function testSaveAppliesExtendedFields(): void
     {
         $context = new MusterContext(new VictualsFactory(), acf: new TestAcfAdapter());

@@ -8,7 +8,11 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\PostRef;
 
 /**
- * Fluent post builder with idempotent-upsert intent.
+ * Fluent post builder with idempotent merge-upsert behaviour.
+ *
+ * Existing posts are identified by `post_type + post_name`. Only fields set on
+ * this builder are updated; omitted fields retain their current WordPress values.
+ * Calling a setter with an empty value explicitly clears that field.
  */
 final class PostBuilder
 {
@@ -194,8 +198,6 @@ final class PostBuilder
     public function save(): PostRef
     {
         $slug = $this->resolveSlug();
-        $status = (string) ($this->payload['post_status'] ?? 'draft');
-
         if ($this->context->dryRun()) {
             $this->context->logger()->info(
                 sprintf('Dry run post upsert [%s:%s].', $this->postType, $slug)
@@ -221,12 +223,17 @@ final class PostBuilder
         $attributes = [
             'post_type' => $this->postType,
             'post_name' => $slug,
-            'post_title' => (string) ($this->payload['post_title'] ?? ''),
-            'post_content' => (string) ($this->payload['post_content'] ?? ''),
-            'post_excerpt' => (string) ($this->payload['post_excerpt'] ?? ''),
-            'post_status' => $status,
-            'post_parent' => $this->resolveParentId($this->payload['post_parent'] ?? null),
         ];
+
+        foreach (['post_title', 'post_content', 'post_excerpt', 'post_status'] as $field) {
+            if (array_key_exists($field, $this->payload)) {
+                $attributes[$field] = (string) $this->payload[$field];
+            }
+        }
+
+        if (array_key_exists('post_parent', $this->payload)) {
+            $attributes['post_parent'] = $this->resolveParentId($this->payload['post_parent']);
+        }
 
         $author = $this->resolveAuthorId($this->payload['post_author'] ?? null);
         if ($author !== null) {

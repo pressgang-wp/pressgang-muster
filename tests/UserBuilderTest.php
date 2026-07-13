@@ -49,6 +49,28 @@ final class UserBuilderTest extends TestCase
         self::assertCount(1, $GLOBALS['__muster_wp_users']);
     }
 
+    public function testUpdatePreservesFieldsThatWereNotSupplied(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new UserBuilder($context))
+            ->login('merge-user')
+            ->email('keep@example.test')
+            ->displayName('Original name')
+            ->role('editor')
+            ->save();
+
+        (new UserBuilder($context))
+            ->login('merge-user')
+            ->displayName('Updated name')
+            ->save();
+
+        $stored = $GLOBALS['__muster_wp_users']['merge-user'];
+        self::assertSame('Updated name', $stored['display_name']);
+        self::assertSame('keep@example.test', $stored['user_email']);
+        self::assertSame('editor', $stored['role']);
+    }
+
     public function testDryRunSkipsUserWrites(): void
     {
         $context = new MusterContext(new VictualsFactory(), dryRun: true);

@@ -51,6 +51,28 @@ final class TermBuilderTest extends TestCase
         self::assertCount(1, $GLOBALS['__muster_wp_terms']);
     }
 
+    public function testUpdatePreservesFieldsThatWereNotSupplied(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new TermBuilder($context, 'category'))
+            ->name('Original name')
+            ->slug('merge-term')
+            ->description('Keep this description')
+            ->parent(9)
+            ->save();
+
+        (new TermBuilder($context, 'category'))
+            ->name('Updated name')
+            ->slug('merge-term')
+            ->save();
+
+        $stored = $GLOBALS['__muster_wp_terms']['category::merge-term'];
+        self::assertSame('Updated name', $stored['name']);
+        self::assertSame('Keep this description', $stored['description']);
+        self::assertSame(9, $stored['parent']);
+    }
+
     public function testDryRunSkipsTermWrites(): void
     {
         $context = new MusterContext(new VictualsFactory(), dryRun: true);

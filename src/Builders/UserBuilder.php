@@ -8,10 +8,11 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\UserRef;
 
 /**
- * Fluent user builder with idempotent-upsert intent.
+ * Fluent user builder with idempotent merge-upsert behaviour.
  *
  * This builder targets WordPress users and persists with deterministic identity:
- * `user_login`.
+ * `user_login`. Existing users retain values for fields that were not set on
+ * this builder; passing an empty value explicitly clears that field.
  */
 final class UserBuilder
 {
@@ -140,10 +141,13 @@ final class UserBuilder
 
         $attributes = [
             'user_login' => $login,
-            'user_email' => (string) ($this->payload['user_email'] ?? ''),
-            'display_name' => (string) ($this->payload['display_name'] ?? ''),
-            'role' => (string) ($this->payload['role'] ?? ''),
         ];
+
+        foreach (['user_email', 'display_name', 'role'] as $field) {
+            if (array_key_exists($field, $this->payload)) {
+                $attributes[$field] = (string) $this->payload[$field];
+            }
+        }
 
         /** @var int|\WP_Error $result */
         $result = 0;

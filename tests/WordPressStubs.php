@@ -103,17 +103,11 @@ namespace {
                 return new WP_Error('missing-post');
             }
 
-            $GLOBALS['__muster_wp_posts'][$key] = [
+            $GLOBALS['__muster_wp_posts'][$key] = array_merge($existing, $attrs, [
                 'ID' => $id,
                 'post_type' => $postType,
                 'post_name' => $slug,
-                'post_title' => (string) ($attrs['post_title'] ?? ''),
-                'post_content' => (string) ($attrs['post_content'] ?? ''),
-                'post_excerpt' => (string) ($attrs['post_excerpt'] ?? ''),
-                'post_status' => (string) ($attrs['post_status'] ?? 'draft'),
-                'post_parent' => (int) ($attrs['post_parent'] ?? 0),
-                'post_author' => (int) ($attrs['post_author'] ?? 0),
-            ];
+            ]);
 
             return $id;
         }
@@ -222,14 +216,11 @@ namespace {
                 $newKey = $taxonomy . '::' . $slug;
 
                 unset($GLOBALS['__muster_wp_terms'][$key]);
-                $GLOBALS['__muster_wp_terms'][$newKey] = [
+                $GLOBALS['__muster_wp_terms'][$newKey] = array_merge($term, $args, [
                     'term_id' => $termId,
                     'taxonomy' => $taxonomy,
                     'slug' => $slug,
-                    'name' => (string) ($term['name'] ?? ''),
-                    'description' => (string) ($args['description'] ?? ''),
-                    'parent' => (int) ($args['parent'] ?? 0),
-                ];
+                ]);
 
                 return ['term_id' => $termId, 'term_taxonomy_id' => $termId];
             }
@@ -314,13 +305,11 @@ namespace {
                 return new WP_Error('missing-user');
             }
 
-            $GLOBALS['__muster_wp_users'][$login] = [
-                'ID' => $id,
-                'user_login' => $login,
-                'user_email' => (string) ($attrs['user_email'] ?? ''),
-                'display_name' => (string) ($attrs['display_name'] ?? ''),
-                'role' => (string) ($attrs['role'] ?? ''),
-            ];
+            $GLOBALS['__muster_wp_users'][$login] = array_merge(
+                $GLOBALS['__muster_wp_users'][$login],
+                $attrs,
+                ['ID' => $id, 'user_login' => $login]
+            );
 
             return $id;
         }

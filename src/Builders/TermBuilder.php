@@ -8,10 +8,11 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Refs\TermRef;
 
 /**
- * Fluent term builder with idempotent-upsert intent.
+ * Fluent term builder with idempotent merge-upsert behaviour.
  *
  * This builder targets taxonomy terms and persists with deterministic identity:
- * `taxonomy + slug`.
+ * `taxonomy + slug`. Existing terms retain values for fields that were not set
+ * on this builder; passing an empty value explicitly clears that field.
  */
 final class TermBuilder
 {
@@ -162,15 +163,25 @@ final class TermBuilder
 
         $attributes = [
             'slug' => $slug,
-            'description' => (string) ($this->payload['description'] ?? ''),
-            'parent' => $this->resolveParentId($this->payload['parent'] ?? null),
         ];
+
+        if (array_key_exists('description', $this->payload)) {
+            $attributes['description'] = (string) $this->payload['description'];
+        }
+
+        if (array_key_exists('parent', $this->payload)) {
+            $attributes['parent'] = $this->resolveParentId($this->payload['parent']);
+        }
 
         /** @var array<string, mixed>|\WP_Error $result */
         $result = [];
         $action = 'created';
 
         if ($existing !== false && isset($existing->term_id)) {
+            if (array_key_exists('name', $this->payload)) {
+                $attributes['name'] = (string) $this->payload['name'];
+            }
+
             $result = wp_update_term((int) $existing->term_id, $this->taxonomy, $attributes);
             $action = 'updated';
         } else {
