@@ -48,7 +48,7 @@ If something is surprising, it is probably wrong.
 - **Patterns**
   Repeatable specifications for generating multiple similar WordPress resources.
 - **Builders**
-  Fluent builders for posts, terms, users, and options. Builders do the minimum required work to upsert data.
+  Fluent builders for posts, terms, users, options, comments, attachments, and menus. Builders do the minimum required work to upsert data.
 - **Refs**
   Immutable value objects returned from `save()` calls, used for linking entities.
 - **RunReport**
@@ -141,6 +141,7 @@ Every builder must have a clear identity rule:
 - Terms: WordPress locator `taxonomy + slug`
 - Users: WordPress locator `user_login`
 - Options: WordPress locator `option_name`
+- Comments: WordPress locator `post + parent + type + author identity + deterministic GMT date`
 
 Logical keys are stable fixture identity; WordPress locators may be mutable.
 Existing unowned locator matches require explicit `adopt()` and resources owned

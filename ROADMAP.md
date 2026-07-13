@@ -5,8 +5,8 @@
 Muster is a WordPress-native orchestrator for deterministic content
 provisioning and development fixtures. Ownership-aware reconciliation and the
 read-only plan/apply lifecycle, named declaration groups, and a deterministic
-fixture clock and real WordPress integration coverage are implemented; the next
-high-priority work is CommentBuilder and generic factory declarations.
+fixture clock, real WordPress integration coverage, and comment fixtures are
+implemented; the next high-priority work is generic factory declarations.
 
 ### Implemented
 
@@ -14,6 +14,7 @@ high-priority work is CommentBuilder and generic factory declarations.
 - **TermBuilder** — merge-upsert taxonomy terms by `taxonomy + slug`
 - **UserBuilder** — merge-upsert WordPress users by `user_login`
 - **OptionBuilder** — WordPress options (upsert by `option_name`)
+- **CommentBuilder** — comments and threaded replies with deterministic native locators
 - **Patterns** — batch factory runner with `count()`, per-pattern `seed()`, iteration index
 - **Victuals** — seeded Faker wrapper (en_GB) with WordPress-friendly helpers
 - **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, owned `--fresh`, read-only planning, JSON reports, seed and declaration-group filters
@@ -48,7 +49,7 @@ high-priority work is CommentBuilder and generic factory declarations.
 
 - [x] **AttachmentBuilder** — register media (images, PDFs), set as featured image on posts, deterministic generated placeholders (`wp_insert_attachment()`, `wp_generate_attachment_metadata()`)
 - [x] **MenuBuilder** — create nav menus and menu items with ordering, parent/child nesting, custom links, post/term/page targets (`wp_create_nav_menu()`, `wp_update_nav_menu_item()`)
-- [ ] **CommentBuilder** — create comments on posts with author, content, status (approved/pending/spam), threaded replies (`wp_insert_comment()`)
+- [x] **CommentBuilder** — create comments on posts with author, content, status (approved/pending/spam), threaded replies (`wp_insert_comment()`)
 
 #### Factory Ergonomics
 

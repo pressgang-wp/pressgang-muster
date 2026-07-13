@@ -36,7 +36,7 @@ Requirements:
 
 ## What Muster Provides
 
-- WordPress-native builders for posts, pages, terms, users, options, menus, and attachments.
+- WordPress-native builders for posts, pages, terms, users, options, comments, menus, and attachments.
 - Stable logical keys and Muster-scoped ownership independent of mutable slugs.
 - Collision-safe adoption plus owned-only reset and pruning.
 - Read-only planning followed by revalidated application with operation summaries.
@@ -62,9 +62,9 @@ Full ecosystem documentation is available in the
 - `Pattern`: repeatable batch runner with `count()` and optional per-pattern seed.
 - `Group`: explicit callback boundary selected by `--only`; skipped callbacks are
   not evaluated.
-- `Builders`: explicit WordPress resource writers. Posts, terms, and users use
-  merge-upsert behavior; menus rebuild their items, attachments are reused by
-  slug, and `truncate()` is an explicitly destructive reset.
+- `Builders`: explicit WordPress resource writers. Posts, terms, users, and
+  comments use merge-upsert behavior; menus rebuild their items, attachments
+  are reused by slug, and `truncate()` is an explicitly destructive reset.
 - `RunReport`: ordered `create`, `update`, `keep`, `prune`, and `conflict`
   operations for one planning or application pass.
 
@@ -80,9 +80,14 @@ locators such as `post_type + slug`, `taxonomy + slug`, `user_login`, and
 `option_name` remain the native lookup layer. Post and term slugs can therefore
 change without creating duplicates.
 
-Post, term, and user builders use **merge-upsert** behaviour: only fields
+Post, term, user, and comment builders use **merge-upsert** behaviour: only fields
 explicitly set on the builder are updated. Omitted fields retain their existing
 WordPress values; passing an empty value explicitly clears a field.
+
+Comments have no slug, so their collision locator is the target post, parent,
+comment type, author email or name, and deterministic GMT date. Content is not
+part of identity and can change safely. Pin `date()` explicitly or define a
+scenario epoch when the declaration must remain stable across invocations.
 
 New users must declare `->password('initial-password')`. The value is sent only
 to `wp_insert_user()`; reruns never reset an existing user's credentials because
