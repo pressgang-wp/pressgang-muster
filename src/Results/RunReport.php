@@ -36,13 +36,9 @@ final class RunReport
      */
     public function summary(): array
     {
-        $summary = [
-            OperationAction::Create->value => 0,
-            OperationAction::Update->value => 0,
-            OperationAction::Keep->value => 0,
-            OperationAction::Prune->value => 0,
-            OperationAction::Conflict->value => 0,
-        ];
+        // Derive the tally keys from the enum so a new action case can never
+        // silently go uncounted.
+        $summary = array_fill_keys(array_column(OperationAction::cases(), 'value'), 0);
 
         foreach ($this->operations as $operation) {
             $summary[$operation->action()->value]++;

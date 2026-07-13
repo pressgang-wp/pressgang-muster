@@ -26,13 +26,7 @@ final class MusterCommand
      */
     public static function register(): void
     {
-        if (! defined('WP_CLI') || ! \WP_CLI) {
-            return;
-        }
-
-        if (class_exists('\WP_CLI')) {
-            \WP_CLI::add_command('capstan muster', [self::class, 'handle']);
-        }
+        Invoker::registerCommand('muster', [self::class, 'handle']);
     }
 
     /**
@@ -52,17 +46,6 @@ final class MusterCommand
 
         $result = Invoker::reconcile($musterClass, $assocArgs);
         Invoker::emitReconciliation($musterClass, $result, $assocArgs);
-
-        if ($result['error'] !== null) {
-            if (Invoker::isJson($assocArgs)) {
-                Invoker::halt();
-            }
-
-            Invoker::fail('Muster failed: ' . $result['error']->getMessage());
-        }
-
-        if (!Invoker::isJson($assocArgs) && !Invoker::isQuiet($assocArgs)) {
-            Invoker::emit(isset($assocArgs['dry-run']) ? 'Muster plan complete.' : 'Muster applied.');
-        }
+        Invoker::finish('Muster', $result, $assocArgs);
     }
 }

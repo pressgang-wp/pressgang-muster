@@ -5,6 +5,7 @@ namespace PressGang\Muster\Victuals;
 use DateTimeInterface;
 use LogicException;
 use PressGang\Muster\Clock\FixtureClock;
+use PressGang\Muster\Support\Slug;
 
 /**
  * Curated Faker wrapper for deterministic, project-friendly generated values.
@@ -72,11 +73,7 @@ final class Victuals
      */
     public function excerpt(int $words = 20): string
     {
-        if (method_exists($this->faker, 'words')) {
-            return $this->faker->words($words, true);
-        }
-
-        return $this->sentence($words);
+        return $this->viaFaker('words', [$words, true], fn (): string => $this->sentence($words));
     }
 
     /**
@@ -88,14 +85,10 @@ final class Victuals
     public function slug(?string $from = null): string
     {
         if ($from !== null && $from !== '') {
-            return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $from), '-'));
+            return Slug::fallback($from);
         }
 
-        if (method_exists($this->faker, 'slug')) {
-            return (string) $this->faker->slug();
-        }
-
-        return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $this->sentence(4)), '-'));
+        return $this->viaFaker('slug', [], fn (): string => Slug::fallback($this->sentence(4)));
     }
 
     /**
@@ -125,11 +118,7 @@ final class Victuals
      */
     public function email(): string
     {
-        if (method_exists($this->faker, 'safeEmail')) {
-            return (string) $this->faker->safeEmail();
-        }
-
-        return (string) $this->faker->email();
+        return $this->viaFaker('safeEmail', [], fn (): string => (string) $this->faker->email());
     }
 
     /**
@@ -280,11 +269,11 @@ final class Victuals
      */
     public function ukPhone(): string
     {
-        if (method_exists($this->faker, 'numerify')) {
-            return (string) $this->faker->numerify('0##########');
-        }
-
-        return '07' . str_pad((string) mt_rand(0, 999999999), 9, '0', STR_PAD_LEFT);
+        return $this->viaFaker(
+            'numerify',
+            ['0##########'],
+            fn (): string => '07' . str_pad((string) mt_rand(0, 999999999), 9, '0', STR_PAD_LEFT)
+        );
     }
 
     /**
@@ -294,11 +283,7 @@ final class Victuals
      */
     public function ukPostcode(): string
     {
-        if (method_exists($this->faker, 'postcode')) {
-            return (string) $this->faker->postcode();
-        }
-
-        return 'SW1A 1AA';
+        return $this->viaFaker('postcode', [], fn (): string => 'SW1A 1AA');
     }
 
     /**
@@ -308,11 +293,7 @@ final class Victuals
      */
     public function ukTown(): string
     {
-        if (method_exists($this->faker, 'city')) {
-            return (string) $this->faker->city();
-        }
-
-        return 'Bristol';
+        return $this->viaFaker('city', [], fn (): string => 'Bristol');
     }
 
     /**
@@ -334,7 +315,7 @@ final class Victuals
      */
     public function datetime(string $format = 'Y-m-d H:i:s'): string
     {
-        return $this->dateBetween('-30 years', 'now')->format($format);
+        return $this->date($format);
     }
 
     /**
@@ -380,5 +361,26 @@ final class Victuals
     private function escapeHtml(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    /**
+     * Call a Faker formatter when the generator provides it, else the fallback.
+     *
+     * Why: seeded runs may swap in a reduced Faker generator (unit tests,
+     * custom providers), so every helper that degrades gracefully shares this
+     * one availability check instead of repeating it.
+     *
+     * @param string $method Faker formatter name, e.g. `safeEmail`.
+     * @param array<int, mixed> $args Arguments for the formatter.
+     * @param callable(): string $fallback Value factory when the formatter is missing.
+     * @return string
+     */
+    private function viaFaker(string $method, array $args, callable $fallback): string
+    {
+        if (method_exists($this->faker, $method)) {
+            return (string) $this->faker->{$method}(...$args);
+        }
+
+        return $fallback();
     }
 }

@@ -232,7 +232,7 @@ final class OwnershipRegistry
                     throw new RuntimeException('Ownership registry contains a malformed resource record.');
                 }
 
-                if ($this->resourceFamily($owned->type()) !== $this->resourceFamily($requested->type())) {
+                if (OwnedResource::family($owned->type()) !== OwnedResource::family($requested->type())) {
                     continue;
                 }
 
@@ -249,24 +249,6 @@ final class OwnershipRegistry
         }
 
         return null;
-    }
-
-    /**
-     * Normalize builders that address the same underlying WordPress object.
-     *
-     * Attachments are posts and nav menus are terms in WordPress, so their IDs
-     * must not be claimable twice merely through different Muster builders.
-     *
-     * @param string $type
-     * @return string
-     */
-    private function resourceFamily(string $type): string
-    {
-        return match ($type) {
-            'attachment' => 'post',
-            'menu' => 'term',
-            default => $type,
-        };
     }
 
     /**

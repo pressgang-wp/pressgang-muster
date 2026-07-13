@@ -113,16 +113,15 @@ trait HasOwnership
                 $intent['scope'],
                 $intent['key']
             ));
-            $context->report()->add(new Operation(
+            $this->reportOperation(
+                $context,
+                $intent,
                 OperationAction::Conflict,
                 $type,
-                $intent['scope'],
-                $intent['key'],
-                $owned->locator(),
                 $owned->id(),
-                $error->getMessage(),
-                $context->activeGroup()
-            ));
+                $owned->locator(),
+                $error->getMessage()
+            );
 
             throw $error;
         }
@@ -155,16 +154,7 @@ trait HasOwnership
                 $intent['adopt']
             );
         } catch (OwnershipConflict $error) {
-            $context->report()->add(new Operation(
-                OperationAction::Conflict,
-                $type,
-                $intent['scope'],
-                $intent['key'],
-                $locator,
-                $id,
-                $error->getMessage(),
-                $context->activeGroup()
-            ));
+            $this->reportOperation($context, $intent, OperationAction::Conflict, $type, $id, $locator, $error->getMessage());
 
             throw $error;
         }
@@ -195,6 +185,39 @@ trait HasOwnership
     }
 
     /**
+     * Record ownership and report the outcome for one completed upsert.
+     *
+     * Record-then-report in one fixed order, so the dry-run, keep, and
+     * real-write paths of every builder cannot drift apart. A null intent
+     * (builder used without a Muster scope) is a no-op.
+     *
+     * @param MusterContext $context
+     * @param array{scope: string, key: string, adopt: bool}|null $intent
+     * @param OperationAction $action
+     * @param string $type
+     * @param int $id
+     * @param string $subtype
+     * @param string $locator
+     * @return void
+     */
+    private function finalizeUpsert(
+        MusterContext $context,
+        ?array $intent,
+        OperationAction $action,
+        string $type,
+        int $id,
+        string $subtype,
+        string $locator,
+    ): void {
+        if ($intent === null) {
+            return;
+        }
+
+        $this->recordOwnership($context, $intent, $type, $id, $subtype, $locator);
+        $this->reportOperation($context, $intent, $action, $type, $id, $locator);
+    }
+
+    /**
      * Add one resource outcome to the current reconciliation report.
      *
      * @param MusterContext $context
@@ -203,15 +226,17 @@ trait HasOwnership
      * @param string $type
      * @param int $id
      * @param string $locator
+     * @param string|null $message
      * @return void
      */
-    private function reportOwnership(
+    private function reportOperation(
         MusterContext $context,
         array $intent,
         OperationAction $action,
         string $type,
         int $id,
         string $locator,
+        ?string $message = null,
     ): void {
         $context->report()->add(new Operation(
             $action,
@@ -220,7 +245,8 @@ trait HasOwnership
             $intent['key'],
             $locator,
             $id,
-            group: $context->activeGroup()
+            $message,
+            $context->activeGroup()
         ));
     }
 
@@ -243,16 +269,7 @@ trait HasOwnership
         string $locator,
         string $message,
     ): never {
-        $context->report()->add(new Operation(
-            OperationAction::Conflict,
-            $type,
-            $intent['scope'],
-            $intent['key'],
-            $locator,
-            $id,
-            $message,
-            $context->activeGroup()
-        ));
+        $this->reportOperation($context, $intent, OperationAction::Conflict, $type, $id, $locator, $message);
 
         throw new OwnershipConflict($message);
     }

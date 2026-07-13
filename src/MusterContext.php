@@ -243,13 +243,16 @@ final class MusterContext
         return isset($this->plannedDeletions[$this->resourceToken($type, $id, $subtype, $locator)]);
     }
 
+    /**
+     * Build the identity token used to key the planned-deletion overlay.
+     *
+     * Tokens use the WordPress storage family (see OwnedResource::family()) so
+     * that, for example, deleting posts of type `attachment` also hides those
+     * IDs from the attachment builder during the same planning pass.
+     */
     private function resourceToken(string $type, int $id, string $subtype, string $locator): string
     {
-        $family = match ($type) {
-            'attachment' => 'post',
-            'menu' => 'term',
-            default => $type,
-        };
+        $family = OwnedResource::family($type);
 
         return $id > 0
             ? sprintf('%s:id:%d', $family, $id)

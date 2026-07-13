@@ -10,6 +10,8 @@ use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\UserRef;
 use PressGang\Muster\Results\OperationAction;
+use PressGang\Muster\Support\WpMeta;
+use PressGang\Muster\Support\WpResult;
 
 /**
  * Fluent user builder with idempotent merge-upsert behaviour.
@@ -244,19 +246,13 @@ final class UserBuilder implements PersistableDeclaration
         $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'user', $plannedId, $login);
-                $this->recordOwnership($this->context, $intent, 'user', $plannedId, 'user', $login);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'user', $plannedId, 'user', $login);
 
             return new UserRef($plannedId, $login);
         }
 
         if ($operation === OperationAction::Keep && $existingId !== null) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'user', $existingId, 'user', $login);
-                $this->reportOwnership($this->context, $intent, $operation, 'user', $existingId, $login);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'user', $existingId, 'user', $login);
 
             return new UserRef($existingId, $login);
         }
@@ -275,23 +271,15 @@ final class UserBuilder implements PersistableDeclaration
             $result = wp_insert_user($attributes);
         }
 
-        if ((function_exists('is_wp_error') && is_wp_error($result)) || !is_int($result) || $result <= 0) {
+        if (!WpResult::isId($result)) {
             throw new RuntimeException('Failed to save user.');
         }
 
         $userId = $result;
 
-        $meta = $this->payload['meta'] ?? [];
-        if (is_array($meta) && function_exists('update_user_meta')) {
-            foreach ($meta as $key => $value) {
-                update_user_meta($userId, (string) $key, $value);
-            }
-        }
+        WpMeta::write('update_user_meta', $userId, $this->payload['meta'] ?? []);
 
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'user', $userId, 'user', $login);
-            $this->reportOwnership($this->context, $intent, $operation, 'user', $userId, $login);
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'user', $userId, 'user', $login);
 
         $this->context->logger()->debug(sprintf('User %s [%s] as ID %d.', $operation->value, $login, $userId));
 

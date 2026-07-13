@@ -214,34 +214,17 @@ final class AttachmentBuilder implements PersistableDeclaration
             }
         }
 
-        $plannedClaim = $intent !== null
-            && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
-        $operation = $attachmentId === null
-            ? ($plannedClaim ? OperationAction::Keep : OperationAction::Create)
-            : (($intent !== null && ($owned === null
-                || $owned->locator() !== $this->slug
-                || $this->title !== null
-                || $this->parent !== null
-                || $this->alt !== null
-                || $this->featuredOn !== null))
-                ? OperationAction::Update
-                : OperationAction::Keep);
+        $operation = $this->attachmentOperation($attachmentId, $owned, $intent);
         $plannedId = $attachmentId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'attachment', $plannedId, $this->slug);
-                $this->recordOwnership($this->context, $intent, 'attachment', $plannedId, 'attachment', $this->slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'attachment', $plannedId, 'attachment', $this->slug);
 
             return new PostRef($plannedId, 'attachment', $this->slug);
         }
 
         if ($operation === OperationAction::Keep && $attachmentId !== null) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'attachment', $attachmentId, 'attachment', $this->slug);
-                $this->reportOwnership($this->context, $intent, $operation, 'attachment', $attachmentId, $this->slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'attachment', $attachmentId, 'attachment', $this->slug);
 
             return new PostRef($attachmentId, 'attachment', $this->slug);
         }
@@ -285,30 +268,45 @@ final class AttachmentBuilder implements PersistableDeclaration
             set_post_thumbnail((int) $featuredOnId, $attachmentId);
         }
 
-        if ($intent !== null) {
-            $this->recordOwnership(
-                $this->context,
-                $intent,
-                'attachment',
-                $attachmentId,
-                'attachment',
-                $this->slug
-            );
-            $this->reportOwnership(
-                $this->context,
-                $intent,
-                $operation,
-                'attachment',
-                $attachmentId,
-                $this->slug
-            );
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'attachment', $attachmentId, 'attachment', $this->slug);
 
         $this->context->logger()->debug(
             sprintf('Attachment %s [attachment:%s] as ID %d.', $operation->value, $this->slug, $attachmentId)
         );
 
         return new PostRef($attachmentId, 'attachment', $this->slug);
+    }
+
+    /**
+     * Determine whether the declaration creates, updates, or keeps the attachment.
+     *
+     * Title, alt text, parent, and featured-image payloads are conservatively
+     * reported as updates until those writes expose comparable read contracts.
+     *
+     * @param int|null $attachmentId
+     * @param OwnedResource|null $owned
+     * @param array{scope: string, key: string, adopt: bool}|null $intent
+     * @return OperationAction
+     */
+    private function attachmentOperation(?int $attachmentId, ?OwnedResource $owned, ?array $intent): OperationAction
+    {
+        if ($attachmentId === null) {
+            $plannedClaim = $intent !== null
+                && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
+
+            return $plannedClaim ? OperationAction::Keep : OperationAction::Create;
+        }
+
+        if ($intent !== null && ($owned === null
+            || $owned->locator() !== $this->slug
+            || $this->title !== null
+            || $this->parent !== null
+            || $this->alt !== null
+            || $this->featuredOn !== null)) {
+            return OperationAction::Update;
+        }
+
+        return OperationAction::Keep;
     }
 
     /**

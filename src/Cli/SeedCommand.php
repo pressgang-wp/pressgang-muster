@@ -35,13 +35,7 @@ final class SeedCommand
      */
     public static function register(): void
     {
-        if (! defined('WP_CLI') || ! \WP_CLI) {
-            return;
-        }
-
-        if (class_exists('\WP_CLI')) {
-            \WP_CLI::add_command('capstan seed', [self::class, 'handle']);
-        }
+        Invoker::registerCommand('seed', [self::class, 'handle']);
     }
 
     /**
@@ -61,18 +55,7 @@ final class SeedCommand
 
         $result = Invoker::reconcile($musterClass, $assocArgs, isset($assocArgs['fresh']));
         Invoker::emitReconciliation($musterClass, $result, $assocArgs);
-
-        if ($result['error'] !== null) {
-            if (Invoker::isJson($assocArgs)) {
-                Invoker::halt();
-            }
-
-            Invoker::fail('Seed failed: ' . $result['error']->getMessage());
-        }
-
-        if (!Invoker::isJson($assocArgs) && !Invoker::isQuiet($assocArgs)) {
-            Invoker::emit(isset($assocArgs['dry-run']) ? 'Seed plan complete.' : 'Seed applied.');
-        }
+        Invoker::finish('Seed', $result, $assocArgs);
     }
 
     /**

@@ -204,10 +204,7 @@ final class MenuBuilder implements PersistableDeclaration
         $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'menu', $plannedId, $this->name);
-                $this->recordOwnership($this->context, $intent, 'menu', $plannedId, 'nav_menu', $this->name);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'menu', $plannedId, 'nav_menu', $this->name);
 
             return new MenuRef($plannedId, $this->name);
         }
@@ -222,10 +219,7 @@ final class MenuBuilder implements PersistableDeclaration
         $this->createItems($menuId, $resolvedItems);
         $this->assignLocations($menuId);
 
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'menu', $menuId, 'nav_menu', $this->name);
-            $this->reportOwnership($this->context, $intent, $operation, 'menu', $menuId, $this->name);
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'menu', $menuId, 'nav_menu', $this->name);
 
         $this->context->logger()->debug(
             sprintf('Menu rebuilt [%s] as ID %d with %d items.', $this->name, $menuId, count($this->items))

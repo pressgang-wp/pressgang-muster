@@ -6,6 +6,7 @@ use PressGang\Muster\Builders\AttachmentBuilder;
 use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Support\Slug;
 
 /**
  * Wires AcfValueGenerator's providers to live Muster builders.
@@ -40,10 +41,10 @@ final class ContextProviders
         return [
             'attachment' => fn (string $name): int => (new AttachmentBuilder(
                 $context,
-                "{$prefix}-" . self::slug($name),
+                "{$prefix}-" . Slug::sanitize($name),
                 $ownershipScope
             ))
-                ->key('acf:attachment:' . self::slug($name))
+                ->key('acf:attachment:' . Slug::sanitize($name))
                 ->placeholder(1200, 800)
                 ->save()
                 ->id(),
@@ -52,16 +53,16 @@ final class ContextProviders
                 $type = $postTypes[0] ?? 'post';
 
                 return (new PostBuilder($context, $type, ownershipScope: $ownershipScope))
-                    ->key('acf:post:' . self::slug($type))
+                    ->key('acf:post:' . Slug::sanitize($type))
                     ->title(ucfirst($type) . ' fixture')
-                    ->slug("{$prefix}-related-" . self::slug($type))
+                    ->slug("{$prefix}-related-" . Slug::sanitize($type))
                     ->status('publish')
                     ->save()
                     ->id();
             },
 
             'term' => fn (string $taxonomy): int => (new TermBuilder($context, $taxonomy, ownershipScope: $ownershipScope))
-                ->key('acf:term:' . self::slug($taxonomy))
+                ->key('acf:term:' . Slug::sanitize($taxonomy))
                 ->name('Fixture term')
                 ->slug("{$prefix}-term")
                 ->save()
@@ -69,21 +70,5 @@ final class ContextProviders
 
             'user' => fn (): int => 1,
         ];
-    }
-
-    /**
-     * Slugify via WordPress when available, with a pure fallback so the
-     * wiring stays constructible in unit tests.
-     *
-     * @param string $value
-     * @return string
-     */
-    private static function slug(string $value): string
-    {
-        if (function_exists('sanitize_title')) {
-            return (string) sanitize_title($value);
-        }
-
-        return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $value), '-'));
     }
 }

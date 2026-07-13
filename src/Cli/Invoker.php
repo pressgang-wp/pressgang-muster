@@ -115,6 +115,46 @@ final class Invoker
     }
 
     /**
+     * Register one `wp capstan <name>` subcommand when WP-CLI is available.
+     *
+     * @param string $name Subcommand name, e.g. `muster` or `seed`.
+     * @param callable $handler Handler receiving (array $args, array $assocArgs).
+     * @return void
+     */
+    public static function registerCommand(string $name, callable $handler): void
+    {
+        if (! defined('WP_CLI') || ! \WP_CLI || ! class_exists('\WP_CLI')) {
+            return;
+        }
+
+        \WP_CLI::add_command('capstan ' . $name, $handler);
+    }
+
+    /**
+     * Shared command tail: surface the reconciliation error, or confirm the
+     * outcome for human-readable runs.
+     *
+     * @param string $label Command label used in messages, e.g. `Muster` or `Seed`.
+     * @param array{plan: RunReport, apply: RunReport|null, error: \Throwable|null} $result
+     * @param array<string, mixed> $assocArgs
+     * @return void
+     */
+    public static function finish(string $label, array $result, array $assocArgs): void
+    {
+        if ($result['error'] !== null) {
+            if (self::isJson($assocArgs)) {
+                self::halt();
+            }
+
+            self::fail(sprintf('%s failed: %s', $label, $result['error']->getMessage()));
+        }
+
+        if (!self::isJson($assocArgs) && !self::isQuiet($assocArgs)) {
+            self::emit(sprintf(isset($assocArgs['dry-run']) ? '%s plan complete.' : '%s applied.', $label));
+        }
+    }
+
+    /**
      * Emit text or JSON reconciliation output.
      *
      * @param string $musterClass

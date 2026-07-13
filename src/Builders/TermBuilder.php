@@ -11,6 +11,8 @@ use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\TermRef;
 use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
+use PressGang\Muster\Support\Slug;
+use PressGang\Muster\Support\WpMeta;
 
 /**
  * Fluent term builder with idempotent merge-upsert behaviour.
@@ -239,19 +241,13 @@ final class TermBuilder implements PersistableDeclaration
         $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'term', $plannedId, $slug);
-                $this->recordOwnership($this->context, $intent, 'term', $plannedId, $this->taxonomy, $slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $plannedId, $this->taxonomy, $slug);
 
             return new TermRef($plannedId, $this->taxonomy, $slug);
         }
 
         if ($operation === OperationAction::Keep && $existingId !== null) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'term', $existingId, $this->taxonomy, $slug);
-                $this->reportOwnership($this->context, $intent, $operation, 'term', $existingId, $slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $existingId, $this->taxonomy, $slug);
 
             return new TermRef($existingId, $this->taxonomy, $slug);
         }
@@ -278,22 +274,14 @@ final class TermBuilder implements PersistableDeclaration
             throw new RuntimeException('Failed to resolve saved term ID.');
         }
 
-        $meta = $this->payload['meta'] ?? [];
-        if (is_array($meta) && function_exists('update_term_meta')) {
-            foreach ($meta as $key => $value) {
-                update_term_meta($termId, (string) $key, $value);
-            }
-        }
+        WpMeta::write('update_term_meta', $termId, $this->payload['meta'] ?? []);
 
         $acf = $this->payload['acf'] ?? [];
         if (is_array($acf) && $acf !== []) {
             $this->context->acf()->updateFields($acf, 'term', $termId);
         }
 
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'term', $termId, $this->taxonomy, $slug);
-            $this->reportOwnership($this->context, $intent, $operation, 'term', $termId, $slug);
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'term', $termId, $this->taxonomy, $slug);
 
         $this->context->logger()->debug(
             sprintf('Term %s [%s:%s] as ID %d.', $operation->value, $this->taxonomy, $slug, $termId)
@@ -371,11 +359,7 @@ final class TermBuilder implements PersistableDeclaration
             throw new LogicException('Term slug is required when name is not set.');
         }
 
-        if (function_exists('sanitize_title')) {
-            return (string) sanitize_title($name);
-        }
-
-        return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $name), '-'));
+        return Slug::sanitize($name);
     }
 
     /**

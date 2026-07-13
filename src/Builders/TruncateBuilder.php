@@ -56,25 +56,13 @@ final class TruncateBuilder
             'no_found_rows' => true,
         ]);
 
-        foreach ($ids as $id) {
-            $resource = new OwnedResource('truncate', "post:{$postType}:{$id}", 'post', (int) $id, $postType, $postType);
-            if ($this->context->dryRun()) {
-                $this->context->markPlannedDeletion($resource);
-                $this->reportPrune($resource);
-                continue;
-            }
-
+        return $this->prune('post', array_map('intval', $ids), $postType, static function (int $id): void {
             if (!function_exists('wp_delete_post')) {
                 throw new RuntimeException('wp_delete_post() is required to truncate posts.');
             }
 
-            wp_delete_post((int) $id, true);
-            $this->reportPrune($resource);
-        }
-
-        $this->context->logger()->debug(sprintf('Truncated %d posts [%s].', count($ids), $postType));
-
-        return $this;
+            wp_delete_post($id, true);
+        });
     }
 
     /**
@@ -103,23 +91,43 @@ final class TruncateBuilder
             return $this;
         }
 
-        foreach ((array) $ids as $id) {
-            $resource = new OwnedResource('truncate', "term:{$taxonomy}:{$id}", 'term', (int) $id, $taxonomy, $taxonomy);
-            if ($this->context->dryRun()) {
-                $this->context->markPlannedDeletion($resource);
-                $this->reportPrune($resource);
-                continue;
-            }
-
+        return $this->prune('term', array_map('intval', (array) $ids), $taxonomy, static function (int $id) use ($taxonomy): void {
             if (!function_exists('wp_delete_term')) {
                 throw new RuntimeException('wp_delete_term() is required to truncate terms.');
             }
 
-            wp_delete_term((int) $id, $taxonomy);
+            wp_delete_term($id, $taxonomy);
+        });
+    }
+
+    /**
+     * Plan or execute permanent deletion for one resource family.
+     *
+     * Dry runs mark each ID as a planned deletion — the overlay later hides it
+     * from builder lookups in the same pass — while real runs invoke the
+     * deleter. Both paths report a prune per resource.
+     *
+     * @param string $type Muster resource type, e.g. `post`.
+     * @param array<int, int> $ids IDs to delete.
+     * @param string $subtype WordPress subtype (post type or taxonomy).
+     * @param callable(int): void $delete Deleter invoked outside dry runs.
+     * @return self
+     */
+    private function prune(string $type, array $ids, string $subtype, callable $delete): self
+    {
+        foreach ($ids as $id) {
+            $resource = new OwnedResource('truncate', "{$type}:{$subtype}:{$id}", $type, $id, $subtype, $subtype);
+
+            if ($this->context->dryRun()) {
+                $this->context->markPlannedDeletion($resource);
+            } else {
+                $delete($id);
+            }
+
             $this->reportPrune($resource);
         }
 
-        $this->context->logger()->debug(sprintf('Truncated %d terms [%s].', count((array) $ids), $taxonomy));
+        $this->context->logger()->debug(sprintf('Truncated %d %ss [%s].', count($ids), $type, $subtype));
 
         return $this;
     }

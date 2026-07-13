@@ -14,7 +14,7 @@ trait AssertsWordPressFixtures
 {
     protected function assertPostExists(string $slug, string $postType = 'post'): object
     {
-        Assert::assertTrue(function_exists('get_posts'), 'get_posts() must be available for WordPress fixture assertions.');
+        $this->requireWpFunction('get_posts');
         $ids = get_posts([
             'name' => $slug,
             'post_type' => $postType,
@@ -34,7 +34,7 @@ trait AssertsWordPressFixtures
 
     protected function assertTermExists(string $taxonomy, string $slug): object
     {
-        Assert::assertTrue(function_exists('get_term_by'), 'get_term_by() must be available for WordPress fixture assertions.');
+        $this->requireWpFunction('get_term_by');
         $term = get_term_by('slug', $slug, $taxonomy);
         Assert::assertIsObject($term, sprintf('Failed asserting that term [%s:%s] exists.', $taxonomy, $slug));
 
@@ -43,7 +43,7 @@ trait AssertsWordPressFixtures
 
     protected function assertUserExists(string $login): object
     {
-        Assert::assertTrue(function_exists('get_user_by'), 'get_user_by() must be available for WordPress fixture assertions.');
+        $this->requireWpFunction('get_user_by');
         $user = get_user_by('login', $login);
         Assert::assertIsObject($user, sprintf('Failed asserting that user [%s] exists.', $login));
 
@@ -52,7 +52,7 @@ trait AssertsWordPressFixtures
 
     protected function assertOptionEquals(string $name, mixed $expected): void
     {
-        Assert::assertTrue(function_exists('get_option'), 'get_option() must be available for WordPress fixture assertions.');
+        $this->requireWpFunction('get_option');
         $missing = new \stdClass();
         $actual = get_option($name, $missing);
         Assert::assertNotSame($missing, $actual, sprintf('Failed asserting that option [%s] exists.', $name));
@@ -61,7 +61,7 @@ trait AssertsWordPressFixtures
 
     protected function assertCommentExists(int $postId, string $content): object
     {
-        Assert::assertTrue(function_exists('get_comments'), 'get_comments() must be available for WordPress fixture assertions.');
+        $this->requireWpFunction('get_comments');
         $comments = get_comments(['post_id' => $postId, 'status' => 'all', 'number' => 0]);
 
         foreach ($comments as $comment) {
@@ -71,5 +71,19 @@ trait AssertsWordPressFixtures
         }
 
         Assert::fail(sprintf('Failed asserting that post ID %d has comment [%s].', $postId, $content));
+    }
+
+    /**
+     * Fail fast with a uniform message when a WordPress lookup is unavailable.
+     *
+     * @param string $function WordPress function the assertion depends on.
+     * @return void
+     */
+    private function requireWpFunction(string $function): void
+    {
+        Assert::assertTrue(
+            function_exists($function),
+            sprintf('%s() must be available for WordPress fixture assertions.', $function)
+        );
     }
 }

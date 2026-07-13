@@ -11,6 +11,8 @@ use UnexpectedValueException;
  */
 final class PatternRunner
 {
+    use AssertsDeclarations;
+
     /**
      * @param Pattern $pattern
      * @param callable(int): PersistableDeclaration $builder
@@ -38,16 +40,10 @@ final class PatternRunner
 
         try {
             for ($i = 1; $i <= $iterations; $i++) {
-                $result = $builder($i);
-
-                if (!$result instanceof PersistableDeclaration) {
-                    throw new UnexpectedValueException(sprintf(
-                        'Pattern [%s] iteration %d must return PersistableDeclaration; received [%s].',
-                        $pattern->name(),
-                        $i,
-                        get_debug_type($result)
-                    ));
-                }
+                $result = $this->assertDeclaration(
+                    $builder($i),
+                    sprintf('Pattern [%s] iteration %d', $pattern->name(), $i)
+                );
 
                 $ref = $result->save();
                 $this->runAfterHooks($pattern, $ref, $i);
@@ -77,17 +73,12 @@ final class PatternRunner
 
             if (is_iterable($result)) {
                 foreach ($result as $position => $declaration) {
-                    if (!$declaration instanceof PersistableDeclaration) {
-                        throw new UnexpectedValueException(sprintf(
-                            'Pattern [%s] after-hook [%s] item [%s] must return PersistableDeclaration; received [%s].',
-                            $pattern->name(),
-                            $name,
-                            (string) $position,
-                            get_debug_type($declaration)
-                        ));
-                    }
-
-                    $declaration->save();
+                    $this->assertDeclaration($declaration, sprintf(
+                        'Pattern [%s] after-hook [%s] item [%s]',
+                        $pattern->name(),
+                        $name,
+                        (string) $position
+                    ))->save();
                 }
 
                 continue;

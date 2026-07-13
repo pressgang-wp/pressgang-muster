@@ -13,6 +13,9 @@ use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Refs\TermRef;
 use PressGang\Muster\Refs\UserRef;
 use PressGang\Muster\Results\OperationAction;
+use PressGang\Muster\Support\Slug;
+use PressGang\Muster\Support\WpMeta;
+use PressGang\Muster\Support\WpResult;
 
 /**
  * Fluent post builder with idempotent merge-upsert behaviour.
@@ -294,19 +297,13 @@ final class PostBuilder implements PersistableDeclaration
         $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'post', $plannedId, $slug);
-                $this->recordOwnership($this->context, $intent, 'post', $plannedId, $this->postType, $slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $plannedId, $this->postType, $slug);
 
             return new PostRef($plannedId, $this->postType, $slug);
         }
 
         if ($operation === OperationAction::Keep && $existingId !== null) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'post', $existingId, $this->postType, $slug);
-                $this->reportOwnership($this->context, $intent, $operation, 'post', $existingId, $slug);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $existingId, $this->postType, $slug);
 
             return new PostRef($existingId, $this->postType, $slug);
         }
@@ -325,7 +322,7 @@ final class PostBuilder implements PersistableDeclaration
             $saveResult = wp_insert_post($attributes, true);
         }
 
-        if ((function_exists('is_wp_error') && is_wp_error($saveResult)) || !is_int($saveResult) || $saveResult <= 0) {
+        if (!WpResult::isId($saveResult)) {
             // Surface WordPress's own reason — a bare "failed" hides exactly
             // the detail (invalid date, bad author, DB error) a fixture
             // author needs to fix their Muster.
@@ -338,12 +335,7 @@ final class PostBuilder implements PersistableDeclaration
 
         $postId = $saveResult;
 
-        $meta = $this->payload['meta_input'] ?? [];
-        if (function_exists('update_post_meta') && is_array($meta)) {
-            foreach ($meta as $key => $value) {
-                update_post_meta($postId, (string) $key, $value);
-            }
-        }
+        WpMeta::write('update_post_meta', $postId, $this->payload['meta_input'] ?? []);
 
         if (isset($this->payload['page_template']) && function_exists('update_post_meta')) {
             update_post_meta($postId, '_wp_page_template', (string) $this->payload['page_template']);
@@ -360,10 +352,7 @@ final class PostBuilder implements PersistableDeclaration
             $this->context->acf()->updateFields($acf, 'post', $postId);
         }
 
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'post', $postId, $this->postType, $slug);
-            $this->reportOwnership($this->context, $intent, $operation, 'post', $postId, $slug);
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'post', $postId, $this->postType, $slug);
 
         $this->context->logger()->debug(
             sprintf('Post %s [%s:%s] as ID %d.', $operation->value, $this->postType, $slug, $postId)
@@ -473,11 +462,7 @@ final class PostBuilder implements PersistableDeclaration
 
         $title = (string) ($this->payload['post_title'] ?? '');
         if ($title !== '') {
-            if (function_exists('sanitize_title')) {
-                return (string) sanitize_title($title);
-            }
-
-            return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $title), '-'));
+            return Slug::sanitize($title);
         }
 
         throw new LogicException('Post slug is required when title is not set.');

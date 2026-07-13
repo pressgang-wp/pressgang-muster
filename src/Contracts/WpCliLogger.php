@@ -24,17 +24,11 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if ($this->quiet || !class_exists('\\WP_CLI')) {
+        if ($this->silenced()) {
             return;
         }
 
-        if (method_exists('\\WP_CLI', 'log')) {
-            \WP_CLI::log($message);
-
-            return;
-        }
-
-        \WP_CLI::line($message);
+        $this->emit('log', $message, $message);
     }
 
     /**
@@ -46,7 +40,7 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if ($this->quiet || !class_exists('\\WP_CLI')) {
+        if ($this->silenced()) {
             return;
         }
 
@@ -70,17 +64,11 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if ($this->quiet || !class_exists('\\WP_CLI')) {
+        if ($this->silenced()) {
             return;
         }
 
-        if (method_exists('\\WP_CLI', 'warning')) {
-            \WP_CLI::warning($message);
-
-            return;
-        }
-
-        \WP_CLI::line('Warning: ' . $message);
+        $this->emit('warning', $message, 'Warning: ' . $message);
     }
 
     public function progress(string $pattern, int $current, int $total): void
@@ -98,5 +86,35 @@ final class WpCliLogger implements LoggerInterface
         }
 
         $this->info(sprintf('Pattern [%s] progress: %d/%d.', $pattern, $current, $total));
+    }
+
+    /**
+     * Central output gate: quiet mode and non-WP-CLI processes emit nothing.
+     *
+     * @return bool
+     */
+    private function silenced(): bool
+    {
+        return $this->quiet || !class_exists('\\WP_CLI');
+    }
+
+    /**
+     * Send a message through a modern WP_CLI channel, or `line()` on older
+     * WP-CLI versions that lack it.
+     *
+     * @param string $method WP_CLI channel, e.g. `log` or `warning`.
+     * @param string $message Message for the modern channel.
+     * @param string $fallback Message for the `line()` fallback, already prefixed.
+     * @return void
+     */
+    private function emit(string $method, string $message, string $fallback): void
+    {
+        if (method_exists('\\WP_CLI', $method)) {
+            \WP_CLI::{$method}($message);
+
+            return;
+        }
+
+        \WP_CLI::line($fallback);
     }
 }

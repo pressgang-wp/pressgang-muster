@@ -4,7 +4,6 @@ namespace PressGang\Muster\Patterns;
 
 use LogicException;
 use PressGang\Muster\Contracts\PersistableDeclaration;
-use UnexpectedValueException;
 
 /**
  * Reusable explicit factory definition for one WordPress resource shape.
@@ -15,6 +14,8 @@ use UnexpectedValueException;
  */
 final class Definition
 {
+    use AssertsDeclarations;
+
     /**
      * @var array<string, callable(PersistableDeclaration, int): PersistableDeclaration>
      */
@@ -92,12 +93,16 @@ final class Definition
      */
     public function make(int $iteration): PersistableDeclaration
     {
-        $declaration = ($this->factory)($iteration);
-        $this->assertDeclaration($declaration, 'factory');
+        $declaration = $this->assertDeclaration(
+            ($this->factory)($iteration),
+            sprintf('Definition [%s] factory', $this->name)
+        );
 
         foreach ($this->activeStates as $state) {
-            $declaration = ($this->states[$state])($declaration, $iteration);
-            $this->assertDeclaration($declaration, sprintf('state [%s]', $state));
+            $declaration = $this->assertDeclaration(
+                ($this->states[$state])($declaration, $iteration),
+                sprintf('Definition [%s] state [%s]', $this->name, $state)
+            );
         }
 
         return $declaration;
@@ -106,17 +111,5 @@ final class Definition
     public function name(): string
     {
         return $this->name;
-    }
-
-    private function assertDeclaration(mixed $value, string $source): void
-    {
-        if (!$value instanceof PersistableDeclaration) {
-            throw new UnexpectedValueException(sprintf(
-                'Definition [%s] %s must return PersistableDeclaration; received [%s].',
-                $this->name,
-                $source,
-                get_debug_type($value)
-            ));
-        }
     }
 }

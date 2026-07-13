@@ -7,6 +7,7 @@ use PressGang\Muster\Contracts\PersistableDeclaration;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
+use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Ownership\OwnershipRegistry;
 use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Refs\OptionRef;
@@ -119,26 +120,10 @@ final class OptionBuilder implements PersistableDeclaration
             $this->claimExistingOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
         }
 
-        $plannedClaim = $intent !== null
-            && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
-        $operation = !$exists
-            ? ($plannedClaim ? OperationAction::Keep : OperationAction::Create)
-            : ($owned === null || $current !== $this->value ? OperationAction::Update : OperationAction::Keep);
+        $operation = $this->optionOperation($exists, $current, $owned, $intent);
 
-        if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
-                $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
-            }
-
-            return new OptionRef($this->key);
-        }
-
-        if ($operation === OperationAction::Keep) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
-                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
-            }
+        if ($this->context->dryRun() || $operation === OperationAction::Keep) {
+            $this->finalizeUpsert($this->context, $intent, $operation, 'option', 0, 'option', $this->key);
 
             return new OptionRef($this->key);
         }
@@ -149,22 +134,35 @@ final class OptionBuilder implements PersistableDeclaration
 
         if (function_exists('update_option')) {
             update_option($this->key, $this->value, $this->autoload);
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
-                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
-            }
             $this->context->logger()->debug(sprintf('Option updated [%s].', $this->key));
-
-            return new OptionRef($this->key);
+        } else {
+            add_option($this->key, $this->value, '', $this->autoload ? 'yes' : 'no');
+            $this->context->logger()->debug(sprintf('Option inserted [%s].', $this->key));
         }
 
-        add_option($this->key, $this->value, '', $this->autoload ? 'yes' : 'no');
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
-            $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
-        }
-        $this->context->logger()->debug(sprintf('Option inserted [%s].', $this->key));
+        $this->finalizeUpsert($this->context, $intent, $operation, 'option', 0, 'option', $this->key);
 
         return new OptionRef($this->key);
+    }
+
+    /**
+     * Determine whether the declaration creates, updates, or keeps the option.
+     *
+     * @param bool $exists Whether the option currently exists in WordPress.
+     * @param mixed $current The stored value when it exists.
+     * @param OwnedResource|null $owned
+     * @param array{scope: string, key: string, adopt: bool}|null $intent
+     * @return OperationAction
+     */
+    private function optionOperation(bool $exists, mixed $current, ?OwnedResource $owned, ?array $intent): OperationAction
+    {
+        if (!$exists) {
+            $plannedClaim = $intent !== null
+                && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
+
+            return $plannedClaim ? OperationAction::Keep : OperationAction::Create;
+        }
+
+        return $owned === null || $current !== $this->value ? OperationAction::Update : OperationAction::Keep;
     }
 }

@@ -12,6 +12,8 @@ use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\UserRef;
 use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
+use PressGang\Muster\Support\WpMeta;
+use PressGang\Muster\Support\WpResult;
 use RuntimeException;
 
 /**
@@ -233,19 +235,13 @@ final class CommentBuilder implements PersistableDeclaration
         $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
-            if ($intent !== null) {
-                $this->reportOwnership($this->context, $intent, $operation, 'comment', $plannedId, $locator);
-                $this->recordOwnership($this->context, $intent, 'comment', $plannedId, $type, $locator);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'comment', $plannedId, $type, $locator);
 
             return new CommentRef($plannedId, $postId);
         }
 
         if ($operation === OperationAction::Keep && $existingId !== null) {
-            if ($intent !== null) {
-                $this->recordOwnership($this->context, $intent, 'comment', $existingId, $type, $locator);
-                $this->reportOwnership($this->context, $intent, $operation, 'comment', $existingId, $locator);
-            }
+            $this->finalizeUpsert($this->context, $intent, $operation, 'comment', $existingId, $type, $locator);
 
             return new CommentRef($existingId, $postId);
         }
@@ -256,7 +252,7 @@ final class CommentBuilder implements PersistableDeclaration
 
         if ($existingId === null) {
             $result = wp_insert_comment($writeAttributes);
-            if ((function_exists('is_wp_error') && is_wp_error($result)) || !is_int($result) || $result <= 0) {
+            if (!WpResult::isId($result)) {
                 throw new RuntimeException('Failed to insert comment.');
             }
 
@@ -272,17 +268,9 @@ final class CommentBuilder implements PersistableDeclaration
         } else {
             $commentId = $existingId;
         }
-        $meta = $this->payload['meta'] ?? [];
-        if (is_array($meta) && function_exists('update_comment_meta')) {
-            foreach ($meta as $key => $value) {
-                update_comment_meta($commentId, (string) $key, $value);
-            }
-        }
+        WpMeta::write('update_comment_meta', $commentId, $this->payload['meta'] ?? []);
 
-        if ($intent !== null) {
-            $this->recordOwnership($this->context, $intent, 'comment', $commentId, $type, $locator);
-            $this->reportOwnership($this->context, $intent, $operation, 'comment', $commentId, $locator);
-        }
+        $this->finalizeUpsert($this->context, $intent, $operation, 'comment', $commentId, $type, $locator);
 
         return new CommentRef($commentId, $postId);
     }
