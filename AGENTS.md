@@ -1,7 +1,7 @@
 # Muster Agent Guide
 
 ## What Muster Is
-Muster is a deterministic, Laravel-style seeding and content provisioning tool for WordPress.
+Muster is a WordPress-native toolkit for deterministic content provisioning and development fixtures.
 
 It provides an explicit orchestration layer for creating and updating WordPress data (posts, terms, users, options, meta) in a **repeatable, idempotent, WordPress-native** way. Muster is tooling, not a runtime abstraction, and is intended for development, testing, and controlled environment setup.
 
@@ -35,11 +35,11 @@ If something is surprising, it is probably wrong.
 ## Mental Model
 
 - **Muster**
-  Orchestrates a seeding run (Laravel Seeder analogue).
+  Orchestrates a named WordPress content provisioning or fixture run.
 - **Victuals**
   Curated wrapper around Faker that provides WordPress-shaped, locale-aware, deterministic fake data.
 - **Patterns**
-  Repeatable specifications for generating multiple similar items (Laravel Factory analogue).
+  Repeatable specifications for generating multiple similar WordPress resources.
 - **Builders**
   Fluent builders for posts, terms, users, and options. Builders do the minimum required work to upsert data.
 - **Refs**
@@ -326,7 +326,8 @@ who has never used Muster before, it is not finished.
 - No automatic inference of intent.
 - No Laravel feature parity for its own sake.
 
-Muster is inspired by Laravel's seeding model, not a port of it.
+Muster draws useful lessons from Laravel and other seeding systems, but remains
+WordPress-native and is not a port of their Model or ORM abstractions.
 
 ---
 

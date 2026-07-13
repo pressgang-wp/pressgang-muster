@@ -5,9 +5,9 @@ namespace PressGang\Muster\Cli;
 /**
  * `wp capstan seed` — run the theme's development seed.
  *
- * The WordPress counterpart to Laravel's `php artisan db:seed`: a deliberate,
- * human-invoked fill of the environment you're pointing at. By convention the
- * theme owns a `{ChildNamespace}\Muster\SiteMuster` (scaffold one with
+ * A deliberate, human-invoked provisioning run for the WordPress environment
+ * you're pointing at. By convention the theme owns a
+ * `{ChildNamespace}\Muster\SiteMuster` (scaffold one with
  * `wp capstan make muster`); name a different class as the first argument.
  *
  * Guard rail: refuses outright when `wp_get_environment_type()` reports

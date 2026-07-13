@@ -17,7 +17,7 @@ use PressGang\Muster\Patterns\Pattern;
 use PressGang\Muster\Victuals\Victuals;
 
 /**
- * Base orchestration class for deterministic content setup runs.
+ * Base orchestration class for deterministic WordPress content provisioning.
  *
  * Subclasses implement `run()` and compose builders, patterns, and Victuals calls.
  */

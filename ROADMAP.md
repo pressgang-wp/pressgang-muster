@@ -2,25 +2,42 @@
 
 ## Current State
 
-Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data setup. The core architecture is stable and tested (23 tests across 9 classes).
+Muster is a WordPress-native orchestrator for deterministic content
+provisioning and development fixtures. The current vertical slice is tested,
+but ownership-aware reconciliation and a real plan/apply lifecycle are required
+before the persistence architecture should be considered stable.
 
 ### Implemented
 
-- **PostBuilder** — posts & custom post types (upsert by `post_type + slug`)
-- **TermBuilder** — taxonomy terms (upsert by `taxonomy + slug`)
-- **UserBuilder** — WordPress users (upsert by `user_login`)
+- **PostBuilder** — merge-upsert posts & custom post types by `post_type + slug`
+- **TermBuilder** — merge-upsert taxonomy terms by `taxonomy + slug`
+- **UserBuilder** — merge-upsert WordPress users by `user_login`
 - **OptionBuilder** — WordPress options (upsert by `option_name`)
 - **Patterns** — batch factory runner with `count()`, per-pattern `seed()`, iteration index
 - **Victuals** — seeded Faker wrapper (en_GB) with WordPress-friendly helpers
-- **CLI** — `wp capstan muster <class> [--seed=N] [--dry-run] [--only=csv]`
+- **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, `--fresh`, visible dry-run intent, seed and Pattern filters
 - **ACF adapter interface** — pluggable ACF integration (NullAcfAdapter ships)
-- **Offline test suite** — WordPress API stubs, deterministic Faker stub
+- **Persistence contract** — documented `ensure`, `merge`, and `replace` semantics; merge is the current default
+- **Test suite** — WordPress API stubs and deterministic Faker coverage
 
 ---
 
 ## Pipeline
 
 ### High Priority
+
+#### Trustworthy Reconciliation
+
+- [x] **Merge-safe updates** — omitted post, term, and user fields retain their existing values
+- [x] **Persistence ADR** — define ensure/merge/replace and separate logical identity from WordPress locators
+- [ ] **Logical keys and ownership** — stable Muster identity independent of mutable slugs
+- [ ] **Collision policy** — refuse unowned natural-key matches unless explicitly adopted
+- [ ] **Owned reset/prune** — delete only resources owned by the selected Muster scenario
+- [ ] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
+- [ ] **Structured result output** — operation summaries and `--format=json`
+- [ ] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns
+- [ ] **Deterministic clock** — separate the fixture epoch from Faker's random seed
+- [ ] **WordPress integration suite** — verify core API behaviour against a real WordPress runtime
 
 #### New Builders
 
@@ -30,10 +47,11 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### Factory Ergonomics
 
-- [ ] **States** — named state variants (e.g. `->state('draft')`, `->state('featured')`) that overlay default field values
-- [ ] **Sequences** — cycling values across pattern iterations (rotating statuses, categories, templates)
-- [ ] **Default definitions** — base field definitions per entity type so patterns don't repeat boilerplate
-- [ ] **After-hooks** — `afterSave()` callbacks on patterns for setting featured images, assigning relationships, etc.
+- [ ] **Generic Patterns** — accept a common declaration contract instead of only `PostBuilder`
+- [ ] **States** — named state variants after persistence modes and ownership are stable
+- [ ] **Sequences** — cycling values across pattern iterations
+- [ ] **Default definitions** — reusable explicit resource definitions without introducing an ORM
+- [ ] **After-hooks** — explicit post-save side effects with inspectable plan output
 
 #### Orchestration
 
@@ -45,10 +63,9 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### Relationships & Cross-References
 
-- [ ] **Ref registry** — named store so patterns can retrieve refs created by earlier patterns (`$this->ref('homepage')`) instead of passing variables
+- [ ] **Ref registry** — named store backed by stable logical resource keys
 - [ ] **Lazy ref resolution** — resolve refs at save-time rather than creation-time, enabling forward references
-- [ ] **`has()` / `for()` relationships** — declarative relationship wiring: "this post *has* 3 comments", "this post is *for* this author"
-- [ ] **`recycle()`** — reuse previously created refs across patterns (e.g. reuse the same set of users as authors)
+- [ ] **Explicit relationships** — WordPress-native reference wiring without ORM-style model inference
 
 #### ACF Adapter
 
@@ -75,7 +92,7 @@ Muster is a Laravel-seeding-style orchestrator for deterministic WordPress data 
 
 #### Logging & Output
 
-- [ ] **WpCliLogger** — pipes to `WP_CLI::log()` / `WP_CLI::debug()`
+- [x] **WpCliLogger** — pipes visible intent to `WP_CLI::log()` and details to `WP_CLI::debug()`
 - [ ] **Progress reporting** — per-pattern progress output during long runs
 - [ ] **Verbose/quiet modes** — `--verbose` flag for detailed per-field logging
 

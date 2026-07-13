@@ -1,8 +1,24 @@
 {
   "name": "pressgang-wp/muster",
-  "description": "Laravel-seeding-style orchestrator for deterministic WordPress data setup",
+  "description": "WordPress-native toolkit for deterministic content provisioning and development fixtures",
   "type": "library",
   "license": "MIT",
+  "keywords": [
+    "wordpress",
+    "fixtures",
+    "seeding",
+    "content-provisioning",
+    "wp-cli",
+    "faker",
+    "testing",
+    "pressgang"
+  ],
+  "homepage": "https://pressgang.dev/",
+  "support": {
+    "docs": "https://docs.pressgang.dev/",
+    "issues": "https://github.com/pressgang-wp/pressgang-muster/issues",
+    "source": "https://github.com/pressgang-wp/pressgang-muster"
+  },
   "require": {
     "php": "^8.3",
     "fakerphp/faker": "^1.24"
