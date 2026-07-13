@@ -297,6 +297,11 @@ final class Invoker
     }
 
     /**
+     * Whether human-readable output is suppressed.
+     *
+     * `--format=json` silently overrides `--quiet`: the JSON payload is the
+     * requested machine-readable output and must always be emitted.
+     *
      * @param array<string, mixed> $assocArgs
      * @return bool
      */

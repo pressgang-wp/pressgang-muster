@@ -260,7 +260,6 @@ final class MenuBuilder implements PersistableDeclaration
      * Remove all current items so declared items fully define the menu.
      *
      * @param int $menuId
-     * @param array<int, array<string, mixed>> $items Resolved item declarations.
      * @return void
      */
     private function deleteExistingItems(int $menuId): void

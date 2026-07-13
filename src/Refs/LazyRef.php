@@ -28,6 +28,9 @@ final class LazyRef
      * @param string|array<int, string> $types Accepted resource type or types.
      * @param string|null $subtype Optional exact WordPress subtype/taxonomy.
      * @return OwnedResource
+     * @throws LogicException If the reference is unresolved, identifies a
+     *         different type or subtype, or lacks a persisted ID outside a
+     *         dry run.
      */
     public function resolve(string|array $types, ?string $subtype = null): OwnedResource
     {

@@ -57,7 +57,12 @@ abstract class Muster
     }
 
     /**
-     * Execute the seed orchestration.
+     * Declare this scenario's fixtures by composing builders and patterns.
+     *
+     * "Seed" here means the provisioning run itself — distinct from the RNG
+     * seed controlling Victuals and from the `wp capstan seed` CLI command
+     * that invokes it. The same declarations run twice per reconciliation:
+     * once planning (dry run), once applying.
      *
      * @return void
      */
@@ -392,9 +397,13 @@ abstract class Muster
     }
 
     /**
-     * Start a named pattern run.
+     * Define a repeatable specification for generating multiple similar items.
      *
-     * @param string $name
+     * Patterns are the factory analogue in Muster. They control repetition,
+     * seeding, and execution order, but do not persist data themselves — the
+     * declaration returned by each iteration remains the persistence boundary.
+     *
+     * @param string $name Human-readable pattern identifier (for debugging/logging).
      * @return Pattern
      */
     public function pattern(string $name): Pattern
@@ -423,6 +432,10 @@ abstract class Muster
 
     /**
      * Create an immutable cycling value sequence for Pattern iterations.
+     *
+     * Each value is derived from the one-based iteration index; the sequence
+     * holds no cursor, so the same iteration always receives the same value
+     * regardless of evaluation order.
      *
      * @param mixed ...$values
      * @return Sequence

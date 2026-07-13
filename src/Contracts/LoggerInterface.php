@@ -10,6 +10,8 @@ namespace PressGang\Muster\Contracts;
 interface LoggerInterface
 {
     /**
+     * Report run-level information users should always see (unless quiet).
+     *
      * @param string $message
      * @param array<string, mixed> $context
      * @return void
@@ -17,6 +19,9 @@ interface LoggerInterface
     public function info(string $message, array $context = []): void;
 
     /**
+     * Report per-declaration diagnostics, surfaced only on verbose runs or a
+     * debug-enabled channel.
+     *
      * @param string $message
      * @param array<string, mixed> $context
      * @return void
@@ -24,6 +29,9 @@ interface LoggerInterface
     public function debug(string $message, array $context = []): void;
 
     /**
+     * Report a non-fatal problem on the implementation's warning channel; the
+     * run continues.
+     *
      * @param string $message
      * @param array<string, mixed> $context
      * @return void

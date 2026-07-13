@@ -66,6 +66,10 @@ final class Definition
     /**
      * Return an isolated variant with the named states applied in order.
      *
+     * Each call replaces the variant's state list rather than accumulating:
+     * chaining `with('a')->with('b')` applies only `b`. Combine states in a
+     * single call — `with('a', 'b')` — to apply both.
+     *
      * @param string ...$names
      * @return self
      */

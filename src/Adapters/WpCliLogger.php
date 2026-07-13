@@ -73,6 +73,16 @@ final class WpCliLogger implements LoggerInterface
         $this->emit('warning', $message, 'Warning: ' . $message);
     }
 
+    /**
+     * Report sampled pattern progress; see {@see self::shouldReport()} for
+     * the cadence — notably, patterns under ten iterations log nothing on
+     * non-verbose runs.
+     *
+     * @param string $pattern
+     * @param int $current
+     * @param int $total
+     * @return void
+     */
     public function progress(string $pattern, int $current, int $total): void
     {
         if ($this->quiet || $total < 1 || !$this->shouldReport($current, $total)) {

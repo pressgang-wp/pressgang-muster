@@ -32,8 +32,13 @@ final class Pattern
     }
 
     /**
+     * Set the exact number of iterations `build()` will run.
+     *
+     * This mutates pattern state only; nothing executes until `build()`.
+     *
      * @param int $count
      * @return self
+     * @throws LogicException If the count is below 1.
      */
     public function count(int $count): self
     {
@@ -48,6 +53,9 @@ final class Pattern
     }
 
     /**
+     * Pin this pattern's Victuals seed, overriding the context-level seed and
+     * any per-pattern override configured on the context.
+     *
      * @param int $seed
      * @return self
      */
@@ -121,23 +129,20 @@ final class Pattern
         return $this->build(fn (int $iteration) => $definition->make($iteration));
     }
 
-    /**
-     * @return string
-     */
     public function name(): string
     {
         return $this->name;
     }
 
-    /**
-     * @return int
-     */
     public function iterations(): int
     {
         return $this->count;
     }
 
     /**
+     * Resolve the seed this run will use: the pattern's own seed first, then
+     * the context's per-pattern override or global seed.
+     *
      * @return int|null
      */
     public function effectiveSeed(): ?int
@@ -145,9 +150,6 @@ final class Pattern
         return $this->seed ?? $this->context->seedForPattern($this->name);
     }
 
-    /**
-     * @return MusterContext
-     */
     public function context(): MusterContext
     {
         return $this->context;

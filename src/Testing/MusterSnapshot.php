@@ -13,6 +13,19 @@ use RuntimeException;
  */
 final class MusterSnapshot
 {
+    /**
+     * Render the on-disk snapshot envelope for one reconciliation report.
+     *
+     * The envelope is versioned JSON: `{snapshot_version: 1, report: {...}}`
+     * with a trailing newline, pretty-printed for reviewable diffs. Byte-for-
+     * byte equality of this string is the snapshot contract used by
+     * {@see self::assertMatches()}.
+     *
+     * @param RunReport $report
+     * @param bool $includeIds Keep WordPress IDs; excluded by default because
+     *        they vary between environments.
+     * @return string
+     */
     public static function serialize(RunReport $report, bool $includeIds = false): string
     {
         $data = $report->toArray();
@@ -49,6 +62,18 @@ final class MusterSnapshot
         }
     }
 
+    /**
+     * Assert the report serializes byte-for-byte to the stored snapshot.
+     *
+     * A missing snapshot file is a mismatch, never an implicit write — call
+     * {@see self::write()} deliberately to create or refresh snapshots.
+     *
+     * @param string $path Snapshot file produced by write().
+     * @param RunReport $report
+     * @param bool $includeIds Must match the value used when writing.
+     * @return void
+     * @throws SnapshotMismatch If the file is missing or differs.
+     */
     public static function assertMatches(string $path, RunReport $report, bool $includeIds = false): void
     {
         if (!is_file($path)) {

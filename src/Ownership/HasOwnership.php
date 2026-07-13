@@ -66,7 +66,12 @@ trait HasOwnership
     }
 
     /**
-     * @return array{scope: string, key: string, adopt: bool}|null
+     * Resolve the builder's declared identity into one ownership intent.
+     *
+     * @return array{scope: string, key: string, adopt: bool}|null Null for
+     *         unscoped low-level builders, which skip ownership entirely.
+     * @throws LogicException If a Muster-scoped builder has no key, or a key
+     *         was declared without an ownership scope.
      */
     private function ownershipIntent(): ?array
     {

@@ -19,23 +19,19 @@ final class PatternResult
     ) {
     }
 
-    /**
-     * @return string
-     */
     public function name(): string
     {
         return $this->name;
     }
 
-    /**
-     * @return int
-     */
     public function count(): int
     {
         return $this->count;
     }
 
     /**
+     * The effective seed the run used, or null for an unseeded run.
+     *
      * @return int|null
      */
     public function seed(): ?int
