@@ -8,6 +8,7 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
@@ -27,6 +28,7 @@ use PressGang\Muster\Support\WpResult;
 final class AttachmentBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     private ?string $sourcePath = null;
 
@@ -174,45 +176,23 @@ final class AttachmentBuilder implements PersistableDeclaration
             throw new RuntimeException('get_posts() is required to plan or save attachments.');
         }
 
-        $naturalId = $this->findExistingId();
-        if ($naturalId !== null
-            && $this->context->isPlannedDeleted('attachment', $naturalId, 'attachment', $this->slug)) {
-            $naturalId = null;
-        }
-
-        $attachmentId = $naturalId;
-        $owned = null;
-
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'attachment', 'attachment');
-
-            $ownedId = $owned === null ? null : $this->resolveOwnedAttachmentId($owned);
-            if ($ownedId !== null
-                && $this->context->isPlannedDeleted('attachment', $ownedId, 'attachment', $owned->locator())) {
-                $ownedId = null;
-            }
-            if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                $this->throwOwnershipConflict($this->context, $intent, 'attachment', $naturalId, $this->slug, sprintf(
-                    'Cannot move owned attachment [%s:%s] to slug [%s]; that slug belongs to attachment ID %d.',
-                    $intent['scope'],
-                    $intent['key'],
-                    $this->slug,
-                    $naturalId
-                ));
-            }
-
-            $attachmentId = $ownedId ?? $naturalId;
-            if ($attachmentId !== null) {
-                $this->claimExistingOwnership(
-                    $this->context,
-                    $intent,
-                    'attachment',
-                    $attachmentId,
-                    'attachment',
-                    $this->slug
-                );
-            }
-        }
+        ['existing' => $attachmentId, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
+            'attachment',
+            'attachment',
+            $this->slug,
+            findNatural: fn (): ?int => $this->findExistingId(),
+            resolveOwned: fn (OwnedResource $owned): ?int => $this->resolveOwnedAttachmentId($owned),
+            idOf: static fn (int $id): int => $id,
+            conflictMessage: fn (int $naturalId): string => sprintf(
+                'Cannot move owned attachment [%s:%s] to slug [%s]; that slug belongs to attachment ID %d.',
+                $intent['scope'],
+                $intent['key'],
+                $this->slug,
+                $naturalId
+            ),
+        );
 
         $operation = $this->attachmentOperation($attachmentId, $owned, $intent);
         $plannedId = $attachmentId ?? 0;
@@ -236,37 +216,10 @@ final class AttachmentBuilder implements PersistableDeclaration
         if ($attachmentId === null) {
             $attachmentId = $this->insertAttachment();
         } elseif ($intent !== null) {
-            if (!function_exists('wp_update_post')) {
-                throw new RuntimeException('wp_update_post() is required to update owned attachments.');
-            }
-
-            $attributes = [
-                'ID' => $attachmentId,
-                'post_name' => $this->slug,
-            ];
-
-            if ($this->title !== null) {
-                $attributes['post_title'] = $this->title;
-            }
-
-            if ($this->parent !== null) {
-                $attributes['post_parent'] = $parentId;
-            }
-
-            $result = wp_update_post($attributes, true);
-
-            if (!WpResult::isId($result)) {
-                throw new RuntimeException(sprintf('Failed to update owned attachment [%s].', $this->slug));
-            }
+            $this->updateOwnedAttachment($attachmentId, $parentId);
         }
 
-        if ($this->alt !== null && function_exists('update_post_meta')) {
-            update_post_meta($attachmentId, '_wp_attachment_image_alt', $this->alt);
-        }
-
-        if ($this->featuredOn !== null && function_exists('set_post_thumbnail')) {
-            set_post_thumbnail((int) $featuredOnId, $attachmentId);
-        }
+        $this->applySideEffects($attachmentId, $featuredOnId);
 
         $this->finalizeUpsert($this->context, $intent, $operation, 'attachment', $attachmentId, 'attachment', $this->slug);
 
@@ -307,6 +260,59 @@ final class AttachmentBuilder implements PersistableDeclaration
         }
 
         return OperationAction::Keep;
+    }
+
+    /**
+     * Re-point an owned attachment's slug, title, and parent without
+     * replacing its file.
+     *
+     * @param int $attachmentId
+     * @param int|null $parentId Resolved parent post ID, when declared.
+     * @return void
+     * @throws RuntimeException If the update fails or `wp_update_post()` is missing.
+     */
+    private function updateOwnedAttachment(int $attachmentId, ?int $parentId): void
+    {
+        if (!function_exists('wp_update_post')) {
+            throw new RuntimeException('wp_update_post() is required to update owned attachments.');
+        }
+
+        $attributes = [
+            'ID' => $attachmentId,
+            'post_name' => $this->slug,
+        ];
+
+        if ($this->title !== null) {
+            $attributes['post_title'] = $this->title;
+        }
+
+        if ($this->parent !== null) {
+            $attributes['post_parent'] = $parentId;
+        }
+
+        $result = wp_update_post($attributes, true);
+
+        if (!WpResult::isId($result)) {
+            throw new RuntimeException(sprintf('Failed to update owned attachment [%s].', $this->slug));
+        }
+    }
+
+    /**
+     * Apply alt text and featured-image assignment after the core save.
+     *
+     * @param int $attachmentId
+     * @param int|null $featuredOnId Resolved post ID to feature the image on.
+     * @return void
+     */
+    private function applySideEffects(int $attachmentId, ?int $featuredOnId): void
+    {
+        if ($this->alt !== null && function_exists('update_post_meta')) {
+            update_post_meta($attachmentId, '_wp_attachment_image_alt', $this->alt);
+        }
+
+        if ($this->featuredOn !== null && function_exists('set_post_thumbnail')) {
+            set_post_thumbnail((int) $featuredOnId, $attachmentId);
+        }
     }
 
     /**

@@ -7,6 +7,8 @@ use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
+use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\MenuRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\TermRef;
@@ -26,6 +28,7 @@ use PressGang\Muster\Support\WpResult;
 final class MenuBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     /**
      * Declared items in insertion order.
@@ -156,46 +159,32 @@ final class MenuBuilder implements PersistableDeclaration
             ...($this->locations === [] ? [] : ['locations']),
         ]);
 
-        $natural = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
-        $naturalId = is_object($natural) && isset($natural->term_id) ? (int) $natural->term_id : null;
-        if ($naturalId !== null
-            && $this->context->isPlannedDeleted('menu', $naturalId, 'nav_menu', $this->name)) {
-            $naturalId = null;
-        }
+        ['existing' => $existingId, 'ownedMatch' => $ownedId, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
+            'menu',
+            'nav_menu',
+            $this->name,
+            findNatural: function (): ?int {
+                $menu = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
 
-        $ownedId = null;
-        $owned = null;
-
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'menu', 'nav_menu');
-
-            if ($owned !== null && function_exists('wp_get_nav_menu_object')) {
-                $ownedMenu = wp_get_nav_menu_object($owned->id());
-                $ownedId = is_object($ownedMenu) && isset($ownedMenu->term_id) ? (int) $ownedMenu->term_id : null;
-                if ($ownedId !== null
-                    && $this->context->isPlannedDeleted('menu', $ownedId, 'nav_menu', $owned->locator())) {
-                    $ownedId = null;
+                return is_object($menu) && isset($menu->term_id) ? (int) $menu->term_id : null;
+            },
+            resolveOwned: static function (OwnedResource $owned): ?int {
+                if (!function_exists('wp_get_nav_menu_object')) {
+                    return null;
                 }
-            }
 
-            if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                $this->throwOwnershipConflict(
-                    $this->context,
-                    $intent,
-                    'menu',
-                    $naturalId,
-                    $this->name,
-                    sprintf('Menu name [%s] belongs to a different menu.', $this->name)
-                );
-            }
+                $menu = wp_get_nav_menu_object($owned->id());
 
-            $existingId = $ownedId ?? $naturalId;
-            if ($existingId !== null) {
-                $this->claimExistingOwnership($this->context, $intent, 'menu', $existingId, 'nav_menu', $this->name);
-            }
-        }
-
-        $existingId = $ownedId ?? $naturalId;
+                return is_object($menu) && isset($menu->term_id) ? (int) $menu->term_id : null;
+            },
+            idOf: static fn (int $id): int => $id,
+            conflictMessage: fn (int $naturalId): string => sprintf(
+                'Menu name [%s] belongs to a different menu.',
+                $this->name
+            ),
+        );
         $plannedClaim = $intent !== null
             && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
         $operation = $existingId === null

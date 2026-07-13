@@ -8,6 +8,7 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\TermRef;
 use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
@@ -24,6 +25,7 @@ use PressGang\Muster\Support\WpMeta;
 final class TermBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     /**
      * @var array<string, mixed>
@@ -165,53 +167,75 @@ final class TermBuilder implements PersistableDeclaration
             throw new RuntimeException('get_term_by() is required to plan or save terms.');
         }
 
-        $natural = get_term_by('slug', $slug, $this->taxonomy);
-        if ($natural !== false && isset($natural->term_id)
-            && $this->context->isPlannedDeleted('term', (int) $natural->term_id, $this->taxonomy, $slug)) {
-            $natural = false;
+        ['existing' => $existing, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
+            'term',
+            $this->taxonomy,
+            $slug,
+            findNatural: function () use ($slug): ?object {
+                $term = get_term_by('slug', $slug, $this->taxonomy);
+
+                return is_object($term) && isset($term->term_id) ? $term : null;
+            },
+            resolveOwned: fn (OwnedResource $owned): ?object => $this->resolveOwnedTerm($owned),
+            idOf: static fn (object $term): int => (int) $term->term_id,
+            conflictMessage: fn (int $naturalId): string => sprintf(
+                'Cannot move owned term [%s:%s] to slug [%s]; that slug belongs to term ID %d.',
+                $intent['scope'],
+                $intent['key'],
+                $slug,
+                $naturalId
+            ),
+        );
+
+        $attributes = $this->buildAttributes($slug, $existing !== null);
+
+        $this->context->debugDeclaration('Term', [
+            ...array_keys($attributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta'] ?? []))),
+            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
+        ]);
+
+        $existingId = $existing === null ? null : (int) $existing->term_id;
+        $operation = $this->termOperation($existing, $attributes, $owned, $slug);
+
+        if ($this->context->dryRun()) {
+            $plannedId = $existingId ?? 0;
+            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $plannedId, $this->taxonomy, $slug);
+
+            return new TermRef($plannedId, $this->taxonomy, $slug);
         }
 
-        $existing = $natural;
-        $owned = null;
+        if ($operation === OperationAction::Keep && $existingId !== null) {
+            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $existingId, $this->taxonomy, $slug);
 
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'term', $this->taxonomy);
-
-            $ownedTerm = $owned === null ? null : $this->resolveOwnedTerm($owned);
-            if ($ownedTerm !== null && isset($ownedTerm->term_id)
-                && $this->context->isPlannedDeleted(
-                    'term',
-                    (int) $ownedTerm->term_id,
-                    $this->taxonomy,
-                    $owned->locator()
-                )) {
-                $ownedTerm = null;
-            }
-            if ($ownedTerm !== null && $natural !== false
-                && isset($natural->term_id)
-                && (int) $ownedTerm->term_id !== (int) $natural->term_id) {
-                $this->throwOwnershipConflict($this->context, $intent, 'term', (int) $natural->term_id, $slug, sprintf(
-                    'Cannot move owned term [%s:%s] to slug [%s]; that slug belongs to term ID %d.',
-                    $intent['scope'],
-                    $intent['key'],
-                    $slug,
-                    (int) $natural->term_id
-                ));
-            }
-
-            $existing = $ownedTerm ?? $natural;
-            if ($existing !== false && $existing !== null && isset($existing->term_id)) {
-                $this->claimExistingOwnership(
-                    $this->context,
-                    $intent,
-                    'term',
-                    (int) $existing->term_id,
-                    $this->taxonomy,
-                    $slug
-                );
-            }
+            return new TermRef($existingId, $this->taxonomy, $slug);
         }
 
+        $termId = $this->writeTerm($existingId, $name, $attributes);
+        $this->applySideEffects($termId);
+        $this->finalizeUpsert($this->context, $intent, $operation, 'term', $termId, $this->taxonomy, $slug);
+
+        $this->context->logger()->debug(
+            sprintf('Term %s [%s:%s] as ID %d.', $operation->value, $this->taxonomy, $slug, $termId)
+        );
+
+        return new TermRef($termId, $this->taxonomy, $slug);
+    }
+
+    /**
+     * Assemble the WordPress write attributes from declared builder state.
+     *
+     * The display name is only written on updates; inserts pass it to
+     * `wp_insert_term()` directly.
+     *
+     * @param string $slug
+     * @param bool $exists Whether an existing term is being updated.
+     * @return array<string, mixed>
+     */
+    private function buildAttributes(string $slug, bool $exists): array
+    {
         $attributes = [
             'slug' => $slug,
         ];
@@ -224,46 +248,32 @@ final class TermBuilder implements PersistableDeclaration
             $attributes['parent'] = $this->resolveParentId($this->payload['parent']);
         }
 
-        if ($existing !== false && $existing !== null && array_key_exists('name', $this->payload)) {
+        if ($exists && array_key_exists('name', $this->payload)) {
             $attributes['name'] = (string) $this->payload['name'];
         }
 
-        $this->context->debugDeclaration('Term', [
-            ...array_keys($attributes),
-            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta'] ?? []))),
-            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
-        ]);
+        return $attributes;
+    }
 
-        $existingId = $existing !== false && $existing !== null && isset($existing->term_id)
-            ? (int) $existing->term_id
-            : null;
-        $operation = $this->termOperation($existing, $attributes, $owned, $slug);
-        $plannedId = $existingId ?? 0;
-
-        if ($this->context->dryRun()) {
-            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $plannedId, $this->taxonomy, $slug);
-
-            return new TermRef($plannedId, $this->taxonomy, $slug);
-        }
-
-        if ($operation === OperationAction::Keep && $existingId !== null) {
-            $this->finalizeUpsert($this->context, $intent, $operation, 'term', $existingId, $this->taxonomy, $slug);
-
-            return new TermRef($existingId, $this->taxonomy, $slug);
-        }
-
+    /**
+     * Insert or update the core term record and return its ID.
+     *
+     * @param int|null $existingId
+     * @param string $name Display name used when inserting.
+     * @param array<string, mixed> $attributes
+     * @return int
+     * @throws RuntimeException If write functions are unavailable or the save fails.
+     */
+    private function writeTerm(?int $existingId, string $name, array $attributes): int
+    {
         if (!function_exists('wp_insert_term') || !function_exists('wp_update_term')) {
             throw new RuntimeException('WordPress write functions are required to save terms.');
         }
 
         /** @var array<string, mixed>|\WP_Error $result */
-        $result = [];
-
-        if ($existing !== false && isset($existing->term_id)) {
-            $result = wp_update_term((int) $existing->term_id, $this->taxonomy, $attributes);
-        } else {
-            $result = wp_insert_term($name, $this->taxonomy, $attributes);
-        }
+        $result = $existingId !== null
+            ? wp_update_term($existingId, $this->taxonomy, $attributes)
+            : wp_insert_term($name, $this->taxonomy, $attributes);
 
         if ((function_exists('is_wp_error') && is_wp_error($result)) || !is_array($result)) {
             throw new RuntimeException('Failed to save term.');
@@ -274,36 +284,39 @@ final class TermBuilder implements PersistableDeclaration
             throw new RuntimeException('Failed to resolve saved term ID.');
         }
 
+        return $termId;
+    }
+
+    /**
+     * Apply declared meta and ACF payloads after the core term is written.
+     *
+     * @param int $termId
+     * @return void
+     */
+    private function applySideEffects(int $termId): void
+    {
         WpMeta::write('update_term_meta', $termId, $this->payload['meta'] ?? []);
 
         $acf = $this->payload['acf'] ?? [];
         if (is_array($acf) && $acf !== []) {
             $this->context->acf()->updateFields($acf, 'term', $termId);
         }
-
-        $this->finalizeUpsert($this->context, $intent, $operation, 'term', $termId, $this->taxonomy, $slug);
-
-        $this->context->logger()->debug(
-            sprintf('Term %s [%s:%s] as ID %d.', $operation->value, $this->taxonomy, $slug, $termId)
-        );
-
-        return new TermRef($termId, $this->taxonomy, $slug);
     }
 
     /**
-     * @param object|false|null $existing
+     * @param object|null $existing
      * @param array<string, mixed> $attributes
      * @param OwnedResource|null $owned
      * @param string $slug
      * @return OperationAction
      */
     private function termOperation(
-        object|false|null $existing,
+        ?object $existing,
         array $attributes,
         ?OwnedResource $owned,
         string $slug,
     ): OperationAction {
-        if ($existing === false || $existing === null) {
+        if ($existing === null) {
             if ($owned !== null && $this->context->ownership()->isPlannedClaim($owned->scope(), $owned->key())) {
                 return OperationAction::Keep;
             }

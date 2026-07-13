@@ -73,19 +73,37 @@ final class WpCliLogger implements LoggerInterface
 
     public function progress(string $pattern, int $current, int $total): void
     {
-        if ($this->quiet || $total < 1) {
-            return;
-        }
-
-        $step = max(1, (int) ceil($total / 10));
-        if (!$this->verbose && $total < 10) {
-            return;
-        }
-        if (!$this->verbose && $current !== $total && $current % $step !== 0) {
+        if ($this->quiet || $total < 1 || !$this->shouldReport($current, $total)) {
             return;
         }
 
         $this->info(sprintf('Pattern [%s] progress: %d/%d.', $pattern, $current, $total));
+    }
+
+    /**
+     * Sampling cadence for pattern progress.
+     *
+     * Verbose runs report every iteration. Normal runs report roughly every
+     * tenth iteration plus the final one, and suppress patterns under ten
+     * iterations entirely — they finish before progress means anything.
+     *
+     * @param int $current One-based iteration index.
+     * @param int $total Total declared iterations.
+     * @return bool
+     */
+    private function shouldReport(int $current, int $total): bool
+    {
+        if ($this->verbose) {
+            return true;
+        }
+
+        if ($total < 10) {
+            return false;
+        }
+
+        $step = max(1, (int) ceil($total / 10));
+
+        return $current === $total || $current % $step === 0;
     }
 
     /**

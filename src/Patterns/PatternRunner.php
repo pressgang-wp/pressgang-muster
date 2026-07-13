@@ -40,14 +40,7 @@ final class PatternRunner
 
         try {
             for ($i = 1; $i <= $iterations; $i++) {
-                $result = $this->assertDeclaration(
-                    $builder($i),
-                    sprintf('Pattern [%s] iteration %d', $pattern->name(), $i)
-                );
-
-                $ref = $result->save();
-                $this->runAfterHooks($pattern, $ref, $i);
-                $pattern->context()->logger()->progress($pattern->name(), $i, $iterations);
+                $this->executeIteration($pattern, $builder, $i, $iterations);
             }
         } finally {
             $muster->endPatternVictualsScope();
@@ -56,6 +49,27 @@ final class PatternRunner
         $pattern->context()->logger()->debug(
             sprintf('Pattern [%s] completed with seed [%s].', $pattern->name(), (string) $seed)
         );
+    }
+
+    /**
+     * Build, persist, and post-process one pattern iteration.
+     *
+     * @param Pattern $pattern
+     * @param callable(int): PersistableDeclaration $builder
+     * @param int $iteration One-based iteration index.
+     * @param int $total Total declared iterations, for progress logging.
+     * @return void
+     */
+    private function executeIteration(Pattern $pattern, callable $builder, int $iteration, int $total): void
+    {
+        $result = $this->assertDeclaration(
+            $builder($iteration),
+            sprintf('Pattern [%s] iteration %d', $pattern->name(), $iteration)
+        );
+
+        $ref = $result->save();
+        $this->runAfterHooks($pattern, $ref, $iteration);
+        $pattern->context()->logger()->progress($pattern->name(), $iteration, $total);
     }
 
     private function runAfterHooks(Pattern $pattern, object $ref, int $iteration): void

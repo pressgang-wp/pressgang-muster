@@ -8,6 +8,7 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\UserRef;
 use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Support\WpMeta;
@@ -24,6 +25,7 @@ use PressGang\Muster\Support\WpResult;
 final class UserBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     /**
      * @var array<string, mixed>
@@ -166,57 +168,26 @@ final class UserBuilder implements PersistableDeclaration
             throw new RuntimeException('get_user_by() is required to plan or save users.');
         }
 
-        $natural = get_user_by('login', $login);
-        if ($natural !== false && isset($natural->ID)
-            && $this->context->isPlannedDeleted('user', (int) $natural->ID, 'user', $login)) {
-            $natural = false;
-        }
+        ['existing' => $existing, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
+            'user',
+            'user',
+            $login,
+            findNatural: static function () use ($login): ?object {
+                $user = get_user_by('login', $login);
 
-        $existing = $natural;
-        $owned = null;
+                return is_object($user) && isset($user->ID) ? $user : null;
+            },
+            resolveOwned: fn (OwnedResource $owned): ?object => $this->resolveOwnedUser($owned, $login, $intent),
+            idOf: static fn (object $user): int => (int) $user->ID,
+            conflictMessage: static fn (int $naturalId): string => sprintf(
+                'User login [%s] belongs to a different user.',
+                $login
+            ),
+        );
 
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'user', 'user');
-
-            $ownedUser = $owned === null ? null : get_user_by('id', $owned->id());
-            if ($ownedUser !== false && $ownedUser !== null && isset($ownedUser->ID)
-                && $this->context->isPlannedDeleted('user', (int) $ownedUser->ID, 'user', $owned->locator())) {
-                $ownedUser = null;
-            }
-            if ($ownedUser !== false && $ownedUser !== null) {
-                if (isset($ownedUser->user_login) && (string) $ownedUser->user_login !== $login) {
-                    throw new LogicException(sprintf(
-                        'Owned user [%s:%s] cannot change login from [%s] to [%s].',
-                        $intent['scope'],
-                        $intent['key'],
-                        (string) $ownedUser->user_login,
-                        $login
-                    ));
-                }
-
-                $existing = $ownedUser;
-            }
-
-            if ($existing !== false && $existing !== null && isset($existing->ID)) {
-                if ($natural !== false && $natural !== null && isset($natural->ID)
-                    && (int) $natural->ID !== (int) $existing->ID) {
-                    $this->throwOwnershipConflict(
-                        $this->context,
-                        $intent,
-                        'user',
-                        (int) $natural->ID,
-                        $login,
-                        sprintf('User login [%s] belongs to a different user.', $login)
-                    );
-                }
-
-                $this->claimExistingOwnership($this->context, $intent, 'user', (int) $existing->ID, 'user', $login);
-            }
-        }
-
-        $existingId = $existing !== false && $existing !== null && isset($existing->ID)
-            ? (int) $existing->ID
-            : null;
+        $existingId = $existing === null ? null : (int) $existing->ID;
 
         if ($existingId === null
             && (!array_key_exists('user_pass', $this->payload) || (string) $this->payload['user_pass'] === '')) {
@@ -226,16 +197,7 @@ final class UserBuilder implements PersistableDeclaration
             ));
         }
 
-        $attributes = ['user_login' => $login];
-        if ($existingId === null) {
-            $attributes['user_pass'] = (string) $this->payload['user_pass'];
-        }
-
-        foreach (['user_email', 'display_name', 'role'] as $field) {
-            if (array_key_exists($field, $this->payload)) {
-                $attributes[$field] = (string) $this->payload[$field];
-            }
-        }
+        $attributes = $this->buildAttributes($login, $existingId === null);
 
         $this->context->debugDeclaration('User', [
             ...array_keys($attributes),
@@ -243,9 +205,9 @@ final class UserBuilder implements PersistableDeclaration
         ]);
 
         $operation = $this->userOperation($existing, $attributes, $owned);
-        $plannedId = $existingId ?? 0;
 
         if ($this->context->dryRun()) {
+            $plannedId = $existingId ?? 0;
             $this->finalizeUpsert($this->context, $intent, $operation, 'user', $plannedId, 'user', $login);
 
             return new UserRef($plannedId, $login);
@@ -257,15 +219,94 @@ final class UserBuilder implements PersistableDeclaration
             return new UserRef($existingId, $login);
         }
 
+        $userId = $this->writeUser($existingId, $attributes);
+        WpMeta::write('update_user_meta', $userId, $this->payload['meta'] ?? []);
+        $this->finalizeUpsert($this->context, $intent, $operation, 'user', $userId, 'user', $login);
+
+        $this->context->logger()->debug(sprintf('User %s [%s] as ID %d.', $operation->value, $login, $userId));
+
+        return new UserRef($userId, $login);
+    }
+
+    /**
+     * Look up the owned user and enforce login immutability.
+     *
+     * `user_login` cannot change on WordPress users, so an owned user whose
+     * stored login differs from the declaration is a programming error, not a
+     * reconciliation conflict.
+     *
+     * @param OwnedResource $owned
+     * @param string $login Declared login.
+     * @param array{scope: string, key: string, adopt: bool}|null $intent
+     * @return object|null The live user, or null when deleted or planned-deleted.
+     * @throws LogicException If the declaration changes the owned user's login.
+     */
+    private function resolveOwnedUser(OwnedResource $owned, string $login, ?array $intent): ?object
+    {
+        $user = get_user_by('id', $owned->id());
+        if (!is_object($user) || !isset($user->ID)) {
+            return null;
+        }
+
+        if ($this->context->isPlannedDeleted('user', (int) $user->ID, 'user', $owned->locator())) {
+            return null;
+        }
+
+        if (isset($user->user_login) && (string) $user->user_login !== $login) {
+            throw new LogicException(sprintf(
+                'Owned user [%s:%s] cannot change login from [%s] to [%s].',
+                $intent['scope'] ?? '',
+                $intent['key'] ?? '',
+                (string) $user->user_login,
+                $login
+            ));
+        }
+
+        return $user;
+    }
+
+    /**
+     * Assemble the WordPress write attributes from declared builder state.
+     *
+     * The create-only password is included solely for inserts; credentials on
+     * existing users are never reset.
+     *
+     * @param string $login
+     * @param bool $creating Whether the save will insert a new user.
+     * @return array<string, mixed>
+     */
+    private function buildAttributes(string $login, bool $creating): array
+    {
+        $attributes = ['user_login' => $login];
+        if ($creating) {
+            $attributes['user_pass'] = (string) $this->payload['user_pass'];
+        }
+
+        foreach (['user_email', 'display_name', 'role'] as $field) {
+            if (array_key_exists($field, $this->payload)) {
+                $attributes[$field] = (string) $this->payload[$field];
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Insert or update the core user record and return its ID.
+     *
+     * @param int|null $existingId
+     * @param array<string, mixed> $attributes
+     * @return int
+     * @throws RuntimeException If write functions are unavailable or the save fails.
+     */
+    private function writeUser(?int $existingId, array $attributes): int
+    {
         if (!function_exists('wp_insert_user') || !function_exists('wp_update_user')) {
             throw new RuntimeException('WordPress write functions are required to save users.');
         }
 
-        /** @var int|\WP_Error $result */
-        $result = 0;
-
-        if ($existing !== false && isset($existing->ID)) {
-            $attributes['ID'] = (int) $existing->ID;
+        if ($existingId !== null) {
+            $attributes['ID'] = $existingId;
             $result = wp_update_user($attributes);
         } else {
             $result = wp_insert_user($attributes);
@@ -275,26 +316,18 @@ final class UserBuilder implements PersistableDeclaration
             throw new RuntimeException('Failed to save user.');
         }
 
-        $userId = $result;
-
-        WpMeta::write('update_user_meta', $userId, $this->payload['meta'] ?? []);
-
-        $this->finalizeUpsert($this->context, $intent, $operation, 'user', $userId, 'user', $login);
-
-        $this->context->logger()->debug(sprintf('User %s [%s] as ID %d.', $operation->value, $login, $userId));
-
-        return new UserRef($userId, $login);
+        return (int) $result;
     }
 
     /**
-     * @param object|false|null $existing
+     * @param object|null $existing
      * @param array<string, mixed> $attributes
      * @param OwnedResource|null $owned
      * @return OperationAction
      */
-    private function userOperation(object|false|null $existing, array $attributes, ?OwnedResource $owned): OperationAction
+    private function userOperation(?object $existing, array $attributes, ?OwnedResource $owned): OperationAction
     {
-        if ($existing === false || $existing === null) {
+        if ($existing === null) {
             if ($owned !== null && $this->context->ownership()->isPlannedClaim($owned->scope(), $owned->key())) {
                 return OperationAction::Keep;
             }

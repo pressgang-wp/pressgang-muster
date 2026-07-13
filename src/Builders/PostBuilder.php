@@ -8,6 +8,7 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Refs\TermRef;
@@ -28,6 +29,7 @@ use PressGang\Muster\Support\WpResult;
 final class PostBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     /**
      * @var array<string, mixed>
@@ -221,39 +223,71 @@ final class PostBuilder implements PersistableDeclaration
             throw new RuntimeException('get_posts() is required to plan or save posts.');
         }
 
-        $naturalId = $this->findBySlug($slug);
-        if ($naturalId !== null
-            && $this->context->isPlannedDeleted('post', $naturalId, $this->postType, $slug)) {
-            $naturalId = null;
+        ['existing' => $existingId, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
+            'post',
+            $this->postType,
+            $slug,
+            findNatural: fn (): ?int => $this->findBySlug($slug),
+            resolveOwned: fn (OwnedResource $owned): ?int => $this->resolveOwnedPostId($owned),
+            idOf: static fn (int $id): int => $id,
+            conflictMessage: fn (int $naturalId): string => sprintf(
+                'Cannot move owned post [%s:%s] to slug [%s]; that slug belongs to post ID %d.',
+                $intent['scope'],
+                $intent['key'],
+                $slug,
+                $naturalId
+            ),
+        );
+
+        $attributes = $this->buildAttributes($slug);
+        $taxInput = $this->resolveTaxInput();
+
+        $this->context->debugDeclaration('Post', [
+            ...array_keys($attributes),
+            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta_input'] ?? []))),
+            ...array_map(static fn (string $key): string => 'terms.' . $key, array_keys($taxInput)),
+            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
+        ]);
+
+        $operation = $this->postOperation($existingId, $attributes, $owned, $slug);
+
+        if ($this->context->dryRun()) {
+            $plannedId = $existingId ?? 0;
+            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $plannedId, $this->postType, $slug);
+
+            return new PostRef($plannedId, $this->postType, $slug);
         }
 
-        $existingId = $naturalId;
-        $owned = null;
+        if ($operation === OperationAction::Keep && $existingId !== null) {
+            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $existingId, $this->postType, $slug);
 
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'post', $this->postType);
-
-            $ownedId = $owned === null ? null : $this->resolveOwnedPostId($owned);
-            if ($ownedId !== null
-                && $this->context->isPlannedDeleted('post', $ownedId, $this->postType, $owned->locator())) {
-                $ownedId = null;
-            }
-            if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                $this->throwOwnershipConflict($this->context, $intent, 'post', $naturalId, $slug, sprintf(
-                    'Cannot move owned post [%s:%s] to slug [%s]; that slug belongs to post ID %d.',
-                    $intent['scope'],
-                    $intent['key'],
-                    $slug,
-                    $naturalId
-                ));
-            }
-
-            $existingId = $ownedId ?? $naturalId;
-            if ($existingId !== null) {
-                $this->claimExistingOwnership($this->context, $intent, 'post', $existingId, $this->postType, $slug);
-            }
+            return new PostRef($existingId, $this->postType, $slug);
         }
 
+        $postId = $this->writePost($existingId, $attributes, $slug);
+        $this->applySideEffects($postId, $taxInput);
+        $this->finalizeUpsert($this->context, $intent, $operation, 'post', $postId, $this->postType, $slug);
+
+        $this->context->logger()->debug(
+            sprintf('Post %s [%s:%s] as ID %d.', $operation->value, $this->postType, $slug, $postId)
+        );
+
+        return new PostRef($postId, $this->postType, $slug);
+    }
+
+    /**
+     * Assemble the WordPress write attributes from declared builder state.
+     *
+     * Only declared fields are included, preserving merge-upsert semantics
+     * for everything the declaration omits.
+     *
+     * @param string $slug
+     * @return array<string, mixed>
+     */
+    private function buildAttributes(string $slug): array
+    {
         $attributes = [
             'post_type' => $this->postType,
             'post_name' => $slug,
@@ -281,39 +315,38 @@ final class PostBuilder implements PersistableDeclaration
             $attributes['edit_date'] = true;
         }
 
-        $resolvedTaxInput = [];
+        return $attributes;
+    }
+
+    /**
+     * Resolve declared term refs per taxonomy into IDs and slugs.
+     *
+     * @return array<string, array<int, string|int>>
+     */
+    private function resolveTaxInput(): array
+    {
+        $resolved = [];
         foreach ($this->taxInput as $taxonomy => $terms) {
-            $resolvedTaxInput[$taxonomy] = $this->resolveTerms($terms, $taxonomy);
+            $resolved[$taxonomy] = $this->resolveTerms($terms, $taxonomy);
         }
 
-        $this->context->debugDeclaration('Post', [
-            ...array_keys($attributes),
-            ...array_map(static fn (string $key): string => 'meta.' . $key, array_keys((array) ($this->payload['meta_input'] ?? []))),
-            ...array_map(static fn (string $key): string => 'terms.' . $key, array_keys($resolvedTaxInput)),
-            ...array_map(static fn (string $key): string => 'acf.' . $key, array_keys((array) ($this->payload['acf'] ?? []))),
-        ]);
+        return $resolved;
+    }
 
-        $operation = $this->postOperation($existingId, $attributes, $owned, $slug);
-        $plannedId = $existingId ?? 0;
-
-        if ($this->context->dryRun()) {
-            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $plannedId, $this->postType, $slug);
-
-            return new PostRef($plannedId, $this->postType, $slug);
-        }
-
-        if ($operation === OperationAction::Keep && $existingId !== null) {
-            $this->finalizeUpsert($this->context, $intent, $operation, 'post', $existingId, $this->postType, $slug);
-
-            return new PostRef($existingId, $this->postType, $slug);
-        }
-
+    /**
+     * Insert or update the core post record and return its ID.
+     *
+     * @param int|null $existingId
+     * @param array<string, mixed> $attributes
+     * @param string $slug
+     * @return int
+     * @throws RuntimeException If write functions are unavailable or the save fails.
+     */
+    private function writePost(?int $existingId, array $attributes, string $slug): int
+    {
         if (!function_exists('wp_insert_post') || !function_exists('wp_update_post')) {
             throw new RuntimeException('WordPress write functions are required to save posts.');
         }
-
-        /** @var int|\WP_Error $saveResult */
-        $saveResult = 0;
 
         if ($existingId !== null) {
             $attributes['ID'] = $existingId;
@@ -333,16 +366,27 @@ final class PostBuilder implements PersistableDeclaration
             throw new RuntimeException(sprintf('Failed to save post [%s:%s]: %s', $this->postType, $slug, $reason));
         }
 
-        $postId = $saveResult;
+        return (int) $saveResult;
+    }
 
+    /**
+     * Apply declared meta, template, taxonomy, and ACF payloads after the
+     * core post record has been written.
+     *
+     * @param int $postId
+     * @param array<string, array<int, string|int>> $taxInput
+     * @return void
+     */
+    private function applySideEffects(int $postId, array $taxInput): void
+    {
         WpMeta::write('update_post_meta', $postId, $this->payload['meta_input'] ?? []);
 
         if (isset($this->payload['page_template']) && function_exists('update_post_meta')) {
             update_post_meta($postId, '_wp_page_template', (string) $this->payload['page_template']);
         }
 
-        if ($resolvedTaxInput !== [] && function_exists('wp_set_object_terms')) {
-            foreach ($resolvedTaxInput as $taxonomy => $terms) {
+        if ($taxInput !== [] && function_exists('wp_set_object_terms')) {
+            foreach ($taxInput as $taxonomy => $terms) {
                 wp_set_object_terms($postId, $terms, $taxonomy, false);
             }
         }
@@ -351,14 +395,6 @@ final class PostBuilder implements PersistableDeclaration
         if (is_array($acf) && $acf !== []) {
             $this->context->acf()->updateFields($acf, 'post', $postId);
         }
-
-        $this->finalizeUpsert($this->context, $intent, $operation, 'post', $postId, $this->postType, $slug);
-
-        $this->context->logger()->debug(
-            sprintf('Post %s [%s:%s] as ID %d.', $operation->value, $this->postType, $slug, $postId)
-        );
-
-        return new PostRef($postId, $this->postType, $slug);
     }
 
     /**

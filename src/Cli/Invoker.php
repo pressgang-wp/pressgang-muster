@@ -76,26 +76,7 @@ final class Invoker
             $clock = self::clockFromFlags($assocArgs, $musterClass);
             $planContext = self::contextFromFlags($assocArgs, true, $clock);
         } catch (\Throwable $error) {
-            $planContext = new MusterContext(
-                new VictualsFactory(),
-                logger: self::loggerFromFlags($assocArgs),
-                dryRun: true,
-            );
-            $planContext->report()->add(new Operation(
-                OperationAction::Conflict,
-                'muster',
-                $musterClass,
-                '',
-                '',
-                0,
-                $error->getMessage()
-            ));
-
-            return [
-                'plan' => $planContext->report(),
-                'apply' => null,
-                'error' => $error,
-            ];
+            return self::failedPlan($musterClass, $assocArgs, $error);
         }
 
         $error = self::runPass($musterClass, $planContext, $fresh);
@@ -110,6 +91,42 @@ final class Invoker
         return [
             'plan' => $planContext->report(),
             'apply' => $applyReport,
+            'error' => $error,
+        ];
+    }
+
+    /**
+     * Report a context-construction failure as a conflicted plan.
+     *
+     * Flag parsing can fail before any usable context exists (bad `--epoch`,
+     * clashing `--verbose`/`--quiet`); the CLI still owes its caller a
+     * structured report rather than a bare exception.
+     *
+     * @param string $musterClass
+     * @param array<string, mixed> $assocArgs
+     * @param \Throwable $error
+     * @return array{plan: RunReport, apply: null, error: \Throwable}
+     */
+    private static function failedPlan(string $musterClass, array $assocArgs, \Throwable $error): array
+    {
+        $context = new MusterContext(
+            new VictualsFactory(),
+            logger: self::loggerFromFlags($assocArgs),
+            dryRun: true,
+        );
+        $context->report()->add(new Operation(
+            OperationAction::Conflict,
+            'muster',
+            $musterClass,
+            '',
+            '',
+            0,
+            $error->getMessage()
+        ));
+
+        return [
+            'plan' => $context->report(),
+            'apply' => null,
             'error' => $error,
         ];
     }

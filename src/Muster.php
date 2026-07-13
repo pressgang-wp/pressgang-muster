@@ -112,14 +112,7 @@ abstract class Muster
         $this->context->useDefaultClock($this->context->clock());
 
         foreach ($musters as $musterClass) {
-            if (!is_subclass_of($musterClass, self::class)) {
-                throw new LogicException(sprintf('Muster::call() target [%s] must extend %s.', $musterClass, self::class));
-            }
-
-            $reflection = new \ReflectionClass($musterClass);
-            if (!$reflection->isInstantiable()) {
-                throw new LogicException(sprintf('Muster::call() target [%s] must be instantiable.', $musterClass));
-            }
+            $reflection = $this->assertCallableMuster($musterClass);
 
             /** @var class-string<Muster> $musterClass */
             $this->context->enterMusterCall(static::class, $musterClass);
@@ -134,6 +127,27 @@ abstract class Muster
                 $this->context->leaveMusterCall($musterClass, $completed);
             }
         }
+    }
+
+    /**
+     * Assert a `call()` target is a concrete, instantiable Muster subclass.
+     *
+     * @param string $musterClass
+     * @return \ReflectionClass<object>
+     * @throws LogicException If the class is not a Muster or is abstract.
+     */
+    private function assertCallableMuster(string $musterClass): \ReflectionClass
+    {
+        if (!is_subclass_of($musterClass, self::class)) {
+            throw new LogicException(sprintf('Muster::call() target [%s] must extend %s.', $musterClass, self::class));
+        }
+
+        $reflection = new \ReflectionClass($musterClass);
+        if (!$reflection->isInstantiable()) {
+            throw new LogicException(sprintf('Muster::call() target [%s] must be instantiable.', $musterClass));
+        }
+
+        return $reflection;
     }
 
     /**

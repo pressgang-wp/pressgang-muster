@@ -23,12 +23,23 @@ final class FixtureClock
      */
     public function __construct(string|DateTimeInterface $epoch)
     {
-        if ($epoch instanceof DateTimeInterface) {
-            $this->epoch = DateTimeImmutable::createFromInterface($epoch);
+        $this->epoch = $epoch instanceof DateTimeInterface
+            ? DateTimeImmutable::createFromInterface($epoch)
+            : self::parseEpoch($epoch);
+    }
 
-            return;
-        }
-
+    /**
+     * Parse and validate an absolute epoch string in UTC.
+     *
+     * Relative expressions are rejected here on purpose: an epoch that drifts
+     * with the invocation time would defeat deterministic fixture dates.
+     *
+     * @param string $epoch Epoch beginning with an ISO calendar date.
+     * @return DateTimeImmutable
+     * @throws InvalidArgumentException If the string is relative or unparseable.
+     */
+    private static function parseEpoch(string $epoch): DateTimeImmutable
+    {
         $epoch = trim($epoch);
         if (!preg_match('/^\d{4}-\d{2}-\d{2}(?:$|[T ])/D', $epoch)) {
             throw new InvalidArgumentException(
@@ -42,7 +53,7 @@ final class FixtureClock
         }
 
         try {
-            $this->epoch = new DateTimeImmutable($epoch, new DateTimeZone('UTC'));
+            return new DateTimeImmutable($epoch, new DateTimeZone('UTC'));
         } catch (\Throwable $error) {
             throw new InvalidArgumentException(
                 sprintf('Invalid fixture epoch [%s]: %s', $epoch, $error->getMessage()),

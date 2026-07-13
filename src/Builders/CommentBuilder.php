@@ -7,6 +7,7 @@ use PressGang\Muster\Contracts\PersistableDeclaration;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Ownership\ResolvesIdentity;
 use PressGang\Muster\Refs\CommentRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\UserRef;
@@ -26,6 +27,7 @@ use RuntimeException;
 final class CommentBuilder implements PersistableDeclaration
 {
     use HasOwnership;
+    use ResolvesIdentity;
 
     /**
      * @var array<string, mixed>
@@ -174,55 +176,24 @@ final class CommentBuilder implements PersistableDeclaration
             throw new RuntimeException('get_comment() and get_comments() are required to plan or save comments.');
         }
 
-        $natural = $this->findNatural($attributes);
-        if ($natural !== null && $this->context->isPlannedDeleted(
+        ['existing' => $existing, 'owned' => $owned] = $this->resolveIdentity(
+            $this->context,
+            $intent,
             'comment',
-            (int) $natural->comment_ID,
             $type,
-            $locator
-        )) {
-            $natural = null;
-        }
+            $locator,
+            findNatural: fn (): ?object => $this->findNatural($attributes),
+            resolveOwned: static function (OwnedResource $owned): ?object {
+                $comment = get_comment($owned->id());
 
-        $owned = null;
-        $existing = $natural;
-
-        if ($intent !== null) {
-            $owned = $this->currentOwnership($this->context, $intent, 'comment', $type);
-            $ownedComment = $owned === null ? null : get_comment($owned->id());
-
-            if ($ownedComment !== null && $ownedComment !== false
-                && $this->context->isPlannedDeleted('comment', (int) $ownedComment->comment_ID, $type, $owned->locator())) {
-                $ownedComment = null;
-            }
-
-            if ($ownedComment !== null && $ownedComment !== false) {
-                $existing = $ownedComment;
-            }
-
-            if ($existing !== null && $natural !== null
-                && (int) $existing->comment_ID !== (int) $natural->comment_ID) {
-                $this->throwOwnershipConflict(
-                    $this->context,
-                    $intent,
-                    'comment',
-                    (int) $natural->comment_ID,
-                    $locator,
-                    sprintf('Comment locator [%s] belongs to a different comment.', $locator)
-                );
-            }
-
-            if ($existing !== null) {
-                $this->claimExistingOwnership(
-                    $this->context,
-                    $intent,
-                    'comment',
-                    (int) $existing->comment_ID,
-                    $type,
-                    $locator
-                );
-            }
-        }
+                return is_object($comment) ? $comment : null;
+            },
+            idOf: static fn (object $comment): int => (int) $comment->comment_ID,
+            conflictMessage: static fn (int $naturalId): string => sprintf(
+                'Comment locator [%s] belongs to a different comment.',
+                $locator
+            ),
+        );
 
         $existingId = $existing === null ? null : (int) $existing->comment_ID;
         $writeAttributes = $this->persistenceAttributes($attributes, $existingId !== null);
@@ -246,33 +217,50 @@ final class CommentBuilder implements PersistableDeclaration
             return new CommentRef($existingId, $postId);
         }
 
-        if (!function_exists('wp_insert_comment') || !function_exists('wp_update_comment')) {
-            throw new RuntimeException('WordPress write functions are required to save comments.');
-        }
-
-        if ($existingId === null) {
-            $result = wp_insert_comment($writeAttributes);
-            if (!WpResult::isId($result)) {
-                throw new RuntimeException('Failed to insert comment.');
-            }
-
-            $commentId = $result;
-        } elseif ($coreChanged) {
-            $writeAttributes['comment_ID'] = $existingId;
-            $result = wp_update_comment($writeAttributes, true);
-            if ((function_exists('is_wp_error') && is_wp_error($result)) || $result === false || $result === 0) {
-                throw new RuntimeException('Failed to update comment.');
-            }
-
-            $commentId = $existingId;
-        } else {
-            $commentId = $existingId;
-        }
+        $commentId = $this->writeComment($existingId, $writeAttributes, $coreChanged);
         WpMeta::write('update_comment_meta', $commentId, $this->payload['meta'] ?? []);
 
         $this->finalizeUpsert($this->context, $intent, $operation, 'comment', $commentId, $type, $locator);
 
         return new CommentRef($commentId, $postId);
+    }
+
+    /**
+     * Insert or update the core comment record and return its ID.
+     *
+     * An unchanged existing comment is returned without a write; the caller
+     * decides whether meta still needs applying.
+     *
+     * @param int|null $existingId
+     * @param array<string, int|string> $attributes
+     * @param bool $coreChanged Whether any core field differs from WordPress.
+     * @return int
+     * @throws RuntimeException If write functions are unavailable or the save fails.
+     */
+    private function writeComment(?int $existingId, array $attributes, bool $coreChanged): int
+    {
+        if (!function_exists('wp_insert_comment') || !function_exists('wp_update_comment')) {
+            throw new RuntimeException('WordPress write functions are required to save comments.');
+        }
+
+        if ($existingId === null) {
+            $result = wp_insert_comment($attributes);
+            if (!WpResult::isId($result)) {
+                throw new RuntimeException('Failed to insert comment.');
+            }
+
+            return (int) $result;
+        }
+
+        if ($coreChanged) {
+            $attributes['comment_ID'] = $existingId;
+            $result = wp_update_comment($attributes, true);
+            if ((function_exists('is_wp_error') && is_wp_error($result)) || $result === false || $result === 0) {
+                throw new RuntimeException('Failed to update comment.');
+            }
+        }
+
+        return $existingId;
     }
 
     /**
