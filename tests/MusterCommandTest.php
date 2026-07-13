@@ -98,6 +98,14 @@ namespace PressGang\Muster\Tests {
             self::assertSame(1, $GLOBALS['__muster_cli_test_run_count']);
             self::assertSame(1, $GLOBALS['__muster_cli_test_pattern_counter']);
         }
+
+        public function testDryRunEmitsVisibleIntent(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], ['dry-run' => true]);
+
+            self::assertContains('Dry run pattern [allowed] for 1 iterations.', $GLOBALS['__muster_wp_cli_lines']);
+            self::assertContains('Muster completed.', $GLOBALS['__muster_wp_cli_lines']);
+        }
     }
 
     final class TestMusterForCli extends Muster

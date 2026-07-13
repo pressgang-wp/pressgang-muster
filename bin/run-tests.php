@@ -1,5 +1,10 @@
 <?php
 
+$phpunit = __DIR__ . '/../vendor/bin/phpunit';
+if (is_file($phpunit)) {
+    passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($phpunit), $exitCode);
+    exit($exitCode);
+}
 
 require_once __DIR__ . '/../tests/bootstrap.php';
 

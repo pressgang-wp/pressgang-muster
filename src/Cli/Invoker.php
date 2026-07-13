@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Cli;
 
 use InvalidArgumentException;
+use PressGang\Muster\Contracts\WpCliLogger;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
@@ -35,6 +36,7 @@ final class Invoker
 
         return new MusterContext(
             new VictualsFactory(),
+            logger: new WpCliLogger(),
             acf: function_exists('update_field') ? new \PressGang\Muster\Adapters\LiveAcfAdapter() : null,
             seed: isset($assocArgs['seed']) ? (int) $assocArgs['seed'] : null,
             dryRun: isset($assocArgs['dry-run']),
