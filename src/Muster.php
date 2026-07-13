@@ -22,6 +22,7 @@ use PressGang\Muster\Patterns\Pattern;
 use PressGang\Muster\Patterns\Definition;
 use PressGang\Muster\Patterns\Sequence;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Victuals\Victuals;
 
 /**
@@ -136,6 +137,29 @@ abstract class Muster
     }
 
     /**
+     * Create a save-time reference to a stable logical resource key.
+     *
+     * Pass another Muster class as the scope for an explicit cross-scenario
+     * relationship. Constructing the ref performs no WordPress reads or writes.
+     *
+     * @param string $key
+     * @param class-string<Muster>|null $scope
+     * @return LazyRef
+     */
+    public function ref(string $key, ?string $scope = null): LazyRef
+    {
+        $key = trim($key);
+        if ($key === '') {
+            throw new LogicException('Muster reference key must not be empty.');
+        }
+        if ($scope !== null && !is_subclass_of($scope, self::class)) {
+            throw new LogicException(sprintf('Muster reference scope [%s] must extend %s.', $scope, self::class));
+        }
+
+        return new LazyRef($this->context, $scope ?? static::class, $key);
+    }
+
+    /**
      * Start a post builder for a given post type.
      *
      * The builder must receive `key()` before `save()`.
@@ -229,10 +253,10 @@ abstract class Muster
     /**
      * Start a comment or threaded-reply builder for a saved post.
      *
-     * @param int|PostRef $post
+     * @param int|PostRef|LazyRef $post
      * @return CommentBuilder
      */
-    public function comment(int|PostRef $post): CommentBuilder
+    public function comment(int|PostRef|LazyRef $post): CommentBuilder
     {
         $this->context->assertDeclarationAllowed('Comment builder');
 

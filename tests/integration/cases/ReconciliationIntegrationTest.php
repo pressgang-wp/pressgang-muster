@@ -35,7 +35,15 @@ final class CoreResourceScenario extends Muster
                 ->role('editor')
                 ->save();
 
-            $post = $this->post('muster_event')
+            $comment = $this->comment($this->ref('event:launch'))
+                ->key('comment:launch-review')
+                ->author('Integration Reviewer')
+                ->email('reviewer@muster.test')
+                ->date($this->at('+1 week +1 hour')->format('Y-m-d H:i:s'))
+                ->content('A real WordPress comment fixture.')
+                ->status('approve');
+
+            $this->post('muster_event')
                 ->key('event:launch')
                 ->title('Launch event')
                 ->slug('launch-event')
@@ -44,14 +52,7 @@ final class CoreResourceScenario extends Muster
                 ->meta(['muster_code' => 'launch'])
                 ->save();
 
-            $this->comment($post)
-                ->key('comment:launch-review')
-                ->author('Integration Reviewer')
-                ->email('reviewer@muster.test')
-                ->date($this->at('+1 week +1 hour')->format('Y-m-d H:i:s'))
-                ->content('A real WordPress comment fixture.')
-                ->status('approve')
-                ->save();
+            $comment->save();
 
             $this->option('muster_fixture')
                 ->key('option:fixture')

@@ -10,6 +10,7 @@ use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\CommentRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\UserRef;
+use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
 use RuntimeException;
 
@@ -31,12 +32,12 @@ final class CommentBuilder implements PersistableDeclaration
 
     /**
      * @param MusterContext $context
-     * @param int|PostRef|null $post
+     * @param int|PostRef|LazyRef|null $post
      * @param string|null $ownershipScope
      */
     public function __construct(
         private MusterContext $context,
-        int|PostRef|null $post = null,
+        int|PostRef|LazyRef|null $post = null,
         ?string $ownershipScope = null,
     ) {
         $this->initializeOwnership($ownershipScope);
@@ -46,7 +47,7 @@ final class CommentBuilder implements PersistableDeclaration
         }
     }
 
-    public function post(int|PostRef $post): self
+    public function post(int|PostRef|LazyRef $post): self
     {
         $this->payload['comment_post_ID'] = $post;
 
@@ -74,7 +75,7 @@ final class CommentBuilder implements PersistableDeclaration
         return $this;
     }
 
-    public function user(int|UserRef $user): self
+    public function user(int|UserRef|LazyRef $user): self
     {
         $this->payload['user_id'] = $user;
 
@@ -126,7 +127,7 @@ final class CommentBuilder implements PersistableDeclaration
         return $this;
     }
 
-    public function parent(int|CommentRef $parent): self
+    public function parent(int|CommentRef|LazyRef $parent): self
     {
         $this->payload['comment_parent'] = $parent;
 
@@ -289,7 +290,7 @@ final class CommentBuilder implements PersistableDeclaration
     {
         $post = $this->payload['comment_post_ID'] ?? null;
         $postId = $this->resolvePostId($post);
-        if ($postId < 1 && !($this->context->dryRun() && $post instanceof PostRef)) {
+        if ($postId < 1 && !($this->context->dryRun() && ($post instanceof PostRef || $post instanceof LazyRef))) {
             throw new LogicException('Comment builder requires a saved post or positive post ID.');
         }
 
@@ -433,16 +434,28 @@ final class CommentBuilder implements PersistableDeclaration
 
     private function resolvePostId(mixed $post): int
     {
+        if ($post instanceof LazyRef) {
+            return $post->resolve(['post', 'attachment'])->id();
+        }
+
         return $post instanceof PostRef ? $post->id() : (int) $post;
     }
 
     private function resolveParentId(mixed $parent): int
     {
+        if ($parent instanceof LazyRef) {
+            return $parent->resolve('comment')->id();
+        }
+
         return $parent instanceof CommentRef ? $parent->id() : (int) $parent;
     }
 
     private function resolveUserId(mixed $user): int
     {
+        if ($user instanceof LazyRef) {
+            return $user->resolve('user')->id();
+        }
+
         return $user instanceof UserRef ? $user->userId() : (int) $user;
     }
 }

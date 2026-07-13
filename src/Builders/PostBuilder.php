@@ -9,6 +9,9 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Refs\LazyRef;
+use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Refs\UserRef;
 use PressGang\Muster\Results\OperationAction;
 
 /**
@@ -109,10 +112,10 @@ final class PostBuilder implements PersistableDeclaration
     }
 
     /**
-     * @param string|int $user
+     * @param string|int|UserRef|LazyRef $user
      * @return self
      */
-    public function author(string|int $user): self
+    public function author(string|int|UserRef|LazyRef $user): self
     {
         $this->payload['post_author'] = $user;
 
@@ -145,10 +148,10 @@ final class PostBuilder implements PersistableDeclaration
     }
 
     /**
-     * @param string|int|PostRef $parent
+     * @param string|int|PostRef|LazyRef $parent
      * @return self
      */
-    public function parent(string|int|PostRef $parent): self
+    public function parent(string|int|PostRef|LazyRef $parent): self
     {
         $this->payload['post_parent'] = $parent;
 
@@ -157,7 +160,7 @@ final class PostBuilder implements PersistableDeclaration
 
     /**
      * @param string $taxonomy
-     * @param array<int, string|int> $terms
+     * @param array<int, string|int|TermRef|LazyRef> $terms
      * @return self
      */
     public function terms(string $taxonomy, array $terms): self
@@ -275,6 +278,11 @@ final class PostBuilder implements PersistableDeclaration
             $attributes['edit_date'] = true;
         }
 
+        $resolvedTaxInput = [];
+        foreach ($this->taxInput as $taxonomy => $terms) {
+            $resolvedTaxInput[$taxonomy] = $this->resolveTerms($terms, $taxonomy);
+        }
+
         $operation = $this->postOperation($existingId, $attributes, $owned, $slug);
         $plannedId = $existingId ?? 0;
 
@@ -334,8 +342,8 @@ final class PostBuilder implements PersistableDeclaration
             update_post_meta($postId, '_wp_page_template', (string) $this->payload['page_template']);
         }
 
-        if ($this->taxInput !== [] && function_exists('wp_set_object_terms')) {
-            foreach ($this->taxInput as $taxonomy => $terms) {
+        if ($resolvedTaxInput !== [] && function_exists('wp_set_object_terms')) {
+            foreach ($resolvedTaxInput as $taxonomy => $terms) {
                 wp_set_object_terms($postId, $terms, $taxonomy, false);
             }
         }
@@ -474,6 +482,14 @@ final class PostBuilder implements PersistableDeclaration
      */
     private function resolveAuthorId(mixed $author): ?int
     {
+        if ($author instanceof LazyRef) {
+            return $author->resolve('user')->id();
+        }
+
+        if ($author instanceof UserRef) {
+            return $author->userId();
+        }
+
         if (is_int($author)) {
             return $author;
         }
@@ -495,6 +511,10 @@ final class PostBuilder implements PersistableDeclaration
      */
     private function resolveParentId(mixed $parent): int
     {
+        if ($parent instanceof LazyRef) {
+            return $parent->resolve('post', $this->postType)->id();
+        }
+
         if ($parent instanceof PostRef) {
             return $parent->id();
         }
@@ -520,5 +540,21 @@ final class PostBuilder implements PersistableDeclaration
         }
 
         return 0;
+    }
+
+    /**
+     * @param array<int, string|int|TermRef|LazyRef> $terms
+     * @return array<int, string|int>
+     */
+    private function resolveTerms(array $terms, string $taxonomy): array
+    {
+        return array_map(
+            static fn (mixed $term): string|int => match (true) {
+                $term instanceof LazyRef => $term->resolve('term', $taxonomy)->id(),
+                $term instanceof TermRef => $term->termId(),
+                default => $term,
+            },
+            $terms
+        );
     }
 }

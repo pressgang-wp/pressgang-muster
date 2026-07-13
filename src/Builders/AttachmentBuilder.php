@@ -9,6 +9,7 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Support\WpResult;
 
@@ -41,9 +42,9 @@ final class AttachmentBuilder implements PersistableDeclaration
 
     private ?string $alt = null;
 
-    private PostRef|int|null $parent = null;
+    private PostRef|LazyRef|int|null $parent = null;
 
-    private PostRef|int|null $featuredOn = null;
+    private PostRef|LazyRef|int|null $featuredOn = null;
 
     /**
      * @param MusterContext $context
@@ -117,10 +118,10 @@ final class AttachmentBuilder implements PersistableDeclaration
     /**
      * Attach the media item to a post (sets the attachment's parent).
      *
-     * @param PostRef|int $post
+     * @param PostRef|LazyRef|int $post
      * @return self
      */
-    public function attachTo(PostRef|int $post): self
+    public function attachTo(PostRef|LazyRef|int $post): self
     {
         $this->parent = $post;
 
@@ -130,10 +131,10 @@ final class AttachmentBuilder implements PersistableDeclaration
     /**
      * Set the media item as a post's featured image after save.
      *
-     * @param PostRef|int $post
+     * @param PostRef|LazyRef|int $post
      * @return self
      */
-    public function featuredOn(PostRef|int $post): self
+    public function featuredOn(PostRef|LazyRef|int $post): self
     {
         $this->featuredOn = $post;
 
@@ -158,6 +159,8 @@ final class AttachmentBuilder implements PersistableDeclaration
         }
 
         $intent = $this->ownershipIntent();
+        $parentId = $this->parent === null ? null : $this->resolvePostId($this->parent);
+        $featuredOnId = $this->featuredOn === null ? null : $this->resolvePostId($this->featuredOn);
 
         if (!function_exists('get_posts')) {
             throw new RuntimeException('get_posts() is required to plan or save attachments.');
@@ -256,7 +259,7 @@ final class AttachmentBuilder implements PersistableDeclaration
             }
 
             if ($this->parent !== null) {
-                $attributes['post_parent'] = $this->resolvePostId($this->parent);
+                $attributes['post_parent'] = $parentId;
             }
 
             $result = wp_update_post($attributes, true);
@@ -271,7 +274,7 @@ final class AttachmentBuilder implements PersistableDeclaration
         }
 
         if ($this->featuredOn !== null && function_exists('set_post_thumbnail')) {
-            set_post_thumbnail($this->resolvePostId($this->featuredOn), $attachmentId);
+            set_post_thumbnail((int) $featuredOnId, $attachmentId);
         }
 
         if ($intent !== null) {
@@ -480,11 +483,15 @@ final class AttachmentBuilder implements PersistableDeclaration
     }
 
     /**
-     * @param PostRef|int $post
+     * @param PostRef|LazyRef|int $post
      * @return int
      */
-    private function resolvePostId(PostRef|int $post): int
+    private function resolvePostId(PostRef|LazyRef|int $post): int
     {
+        if ($post instanceof LazyRef) {
+            return $post->resolve(['post', 'attachment'])->id();
+        }
+
         return $post instanceof PostRef ? $post->id() : $post;
     }
 

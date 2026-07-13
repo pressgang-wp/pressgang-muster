@@ -9,6 +9,7 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
 
 /**
@@ -95,10 +96,10 @@ final class TermBuilder implements PersistableDeclaration
      *
      * This mutates builder state only and does not write to WordPress.
      *
-     * @param string|int|TermRef $parent
+     * @param string|int|TermRef|LazyRef $parent
      * @return self
      */
-    public function parent(string|int|TermRef $parent): self
+    public function parent(string|int|TermRef|LazyRef $parent): self
     {
         $this->payload['parent'] = $parent;
 
@@ -383,6 +384,10 @@ final class TermBuilder implements PersistableDeclaration
      */
     private function resolveParentId(mixed $parent): int
     {
+        if ($parent instanceof LazyRef) {
+            return $parent->resolve('term', $this->taxonomy)->id();
+        }
+
         if ($parent instanceof TermRef) {
             return $parent->termId();
         }

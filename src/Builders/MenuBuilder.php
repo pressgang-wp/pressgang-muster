@@ -10,6 +10,7 @@ use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Refs\MenuRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Refs\LazyRef;
 use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Support\WpResult;
 
@@ -86,14 +87,14 @@ final class MenuBuilder implements PersistableDeclaration
     /**
      * Add a post-object item (page, post, or any CPT entry).
      *
-     * @param PostRef|int $post
+     * @param PostRef|LazyRef|int $post
      * @param string|null $title Optional label override.
      * @param string|null $parent Title of a previously declared item to nest under.
      * @param string|null $postType Required for correct rendering when passing a
      *     raw ID; inferred automatically from a PostRef.
      * @return self
      */
-    public function postItem(PostRef|int $post, ?string $title = null, ?string $parent = null, ?string $postType = null): self
+    public function postItem(PostRef|LazyRef|int $post, ?string $title = null, ?string $parent = null, ?string $postType = null): self
     {
         $this->items[] = [
             'type' => 'post_type',
@@ -109,14 +110,14 @@ final class MenuBuilder implements PersistableDeclaration
     /**
      * Add a taxonomy-term item.
      *
-     * @param TermRef|int $term
+     * @param TermRef|LazyRef|int $term
      * @param string|null $taxonomy Required when passing a raw term ID;
      *     inferred automatically from a TermRef.
      * @param string|null $title Optional label override.
      * @param string|null $parent Title of a previously declared item to nest under.
      * @return self
      */
-    public function termItem(TermRef|int $term, ?string $taxonomy = null, ?string $title = null, ?string $parent = null): self
+    public function termItem(TermRef|LazyRef|int $term, ?string $taxonomy = null, ?string $title = null, ?string $parent = null): self
     {
         $this->items[] = [
             'type' => 'taxonomy',
@@ -148,6 +149,7 @@ final class MenuBuilder implements PersistableDeclaration
         }
 
         $intent = $this->ownershipIntent();
+        $resolvedItems = $this->resolveItems();
 
         $natural = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
         $naturalId = is_object($natural) && isset($natural->term_id) ? (int) $natural->term_id : null;
@@ -212,7 +214,7 @@ final class MenuBuilder implements PersistableDeclaration
         $menuId = $this->upsertMenu($ownedId);
 
         $this->deleteExistingItems($menuId);
-        $this->createItems($menuId);
+        $this->createItems($menuId, $resolvedItems);
         $this->assignLocations($menuId);
 
         if ($intent !== null) {
@@ -270,6 +272,7 @@ final class MenuBuilder implements PersistableDeclaration
      * Remove all current items so declared items fully define the menu.
      *
      * @param int $menuId
+     * @param array<int, array<string, mixed>> $items Resolved item declarations.
      * @return void
      */
     private function deleteExistingItems(int $menuId): void
@@ -297,11 +300,11 @@ final class MenuBuilder implements PersistableDeclaration
      *
      * @throws RuntimeException If an item save fails.
      */
-    private function createItems(int $menuId): void
+    private function createItems(int $menuId, array $items): void
     {
         $idsByTitle = [];
 
-        foreach ($this->items as $position => $item) {
+        foreach ($items as $position => $item) {
             $itemId = wp_update_nav_menu_item($menuId, 0, $this->buildItemArgs($item, $position + 1, $idsByTitle));
 
             if (!WpResult::isId($itemId)) {
@@ -357,6 +360,37 @@ final class MenuBuilder implements PersistableDeclaration
         }
 
         return $args;
+    }
+
+    /**
+     * Resolve logical refs and validate raw relationship metadata at save-time.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveItems(): array
+    {
+        $resolved = [];
+
+        foreach ($this->items as $item) {
+            $target = $item['object_id'] ?? null;
+            if ($target instanceof LazyRef) {
+                $type = $item['type'] === 'taxonomy' ? 'term' : 'post';
+                $resource = $target->resolve($type);
+                $item['object_id'] = $resource->id();
+                $item['object'] = $resource->subtype();
+            }
+
+            if ($item['type'] === 'post_type' && empty($item['object'])) {
+                throw new LogicException('Menu post items created from raw IDs require an explicit post type.');
+            }
+            if ($item['type'] === 'taxonomy' && empty($item['object'])) {
+                throw new LogicException('Menu term items created from raw IDs require an explicit taxonomy.');
+            }
+
+            $resolved[] = $item;
+        }
+
+        return $resolved;
     }
 
     /**
