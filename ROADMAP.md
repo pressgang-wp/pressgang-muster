@@ -3,10 +3,10 @@
 ## Current State
 
 Muster is a WordPress-native orchestrator for deterministic content
-provisioning and development fixtures. Ownership-aware reconciliation and the
-read-only plan/apply lifecycle, named declaration groups, and a deterministic
-fixture clock, real WordPress integration coverage, and comment fixtures are
-implemented; the next high-priority work is generic factory declarations.
+provisioning and development fixtures. Every currently charted milestone is
+implemented: reconciliation, builders, generic factory ergonomics, ordered
+orchestration, logical-key relationships, generated content, CLI output, and
+testing utilities all have executable coverage.
 
 ### Implemented
 
@@ -53,15 +53,15 @@ implemented; the next high-priority work is generic factory declarations.
 
 #### Factory Ergonomics
 
-- [ ] **Generic Patterns** — accept a common declaration contract instead of only `PostBuilder`
-- [ ] **States** — named state variants after persistence modes and ownership are stable
-- [ ] **Sequences** — cycling values across pattern iterations
-- [ ] **Default definitions** — reusable explicit resource definitions without introducing an ORM
-- [ ] **After-hooks** — explicit post-save side effects with inspectable plan output
+- [x] **Generic Patterns** — accept a common declaration contract instead of only `PostBuilder`
+- [x] **States** — named state variants after persistence modes and ownership are stable
+- [x] **Sequences** — cycling values across pattern iterations
+- [x] **Default definitions** — reusable explicit resource definitions without introducing an ORM
+- [x] **After-hooks** — explicit post-save side effects with inspectable plan output
 
 #### Orchestration
 
-- [ ] **Muster chaining** — `$this->call(UserMuster::class, EventMuster::class)` to run multiple musters in sequence with dependency ordering
+- [x] **Muster chaining** — `$this->call(UserMuster::class, EventMuster::class)` to run multiple musters in sequence with dependency ordering
 
 ---
 
@@ -69,9 +69,9 @@ implemented; the next high-priority work is generic factory declarations.
 
 #### Relationships & Cross-References
 
-- [ ] **Ref registry** — named store backed by stable logical resource keys
-- [ ] **Lazy ref resolution** — resolve refs at save-time rather than creation-time, enabling forward references
-- [ ] **Explicit relationships** — WordPress-native reference wiring without ORM-style model inference
+- [x] **Ref registry** — named store backed by stable logical resource keys
+- [x] **Lazy ref resolution** — resolve refs at save-time rather than creation-time, enabling forward references
+- [x] **Explicit relationships** — WordPress-native reference wiring without ORM-style model inference
 
 #### ACF Adapter
 
@@ -83,10 +83,10 @@ implemented; the next high-priority work is generic factory declarations.
 
 #### Data Generation (Victuals)
 
-- [ ] **Placeholder images** — `$victuals->imageUrl(width, height)` for attachment builders
-- [ ] **Gutenberg blocks** — `$victuals->gutenbergBlocks()` to generate block editor content
-- [ ] **Rich HTML content** — `$victuals->richContent()` with headings, lists, links, blockquotes
-- [ ] **ACF repeater data** — `$victuals->repeaterRows(count, schema)` for structured field content
+- [x] **Placeholder images** — `$victuals->imageUrl(width, height)` returns a self-contained seeded SVG data URL; attachment fixtures retain native `placeholder()` support
+- [x] **Gutenberg blocks** — `$victuals->gutenbergBlocks()` to generate block editor content
+- [x] **Rich HTML content** — `$victuals->richContent()` with headings, lists, links, blockquotes
+- [x] **ACF repeater data** — `$victuals->repeaterRows(count, schema)` for structured field content
 
 #### Reset / Teardown
 
@@ -99,10 +99,10 @@ implemented; the next high-priority work is generic factory declarations.
 #### Logging & Output
 
 - [x] **WpCliLogger** — pipes visible intent to `WP_CLI::log()` and details to `WP_CLI::debug()`
-- [ ] **Progress reporting** — per-pattern progress output during long runs
-- [ ] **Verbose/quiet modes** — `--verbose` flag for detailed per-field logging
+- [x] **Progress reporting** — bounded per-pattern progress output during long runs
+- [x] **Verbose/quiet modes** — `--verbose` details and `--quiet` successful-output suppression
 
 #### Testing Utilities
 
-- [ ] **Assertion helpers** — `assertPostExists('slug')`, `assertTermExists('taxonomy', 'slug')` for integration tests
-- [ ] **Snapshot testing** — serialize muster output for regression comparison
+- [x] **Assertion helpers** — `assertPostExists('slug')`, `assertTermExists('taxonomy', 'slug')` for integration tests
+- [x] **Snapshot testing** — serialize versioned Muster reports for regression comparison

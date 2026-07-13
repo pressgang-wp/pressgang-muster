@@ -44,12 +44,14 @@ Requirements:
 - Named declaration groups for safe, complete `--only` runs.
 - Merge-safe post, term, and user updates that preserve omitted fields.
 - Seeded fake content through the curated `Victuals` Faker wrapper.
-- Repeatable post Patterns with declared counts and per-pattern seed overrides.
-- Immutable refs for parents, menu items, attachments, and featured images.
+- Resource-agnostic Patterns with definitions, named states, sequences, and inspectable after-hooks.
+- Immutable save refs plus logical-key lazy refs for explicit relationships.
+- Ordered chaining of focused Muster classes through one shared run context.
 - ACF values derived from the active theme's `acf-json` definitions.
 - Conventional `wp capstan seed` and low-level named Muster commands.
 - Deterministic placeholder media for stable visual fixtures.
 - A separate real-WordPress integration suite for core API and database behavior.
+- WordPress assertion helpers and stable structured-report snapshots.
 
 Full ecosystem documentation is available in the
 [Muster GitBook guide](https://docs.pressgang.dev/ecosystem/muster).
@@ -59,7 +61,8 @@ Full ecosystem documentation is available in the
 - `Muster`: orchestration entrypoint where your seed flow lives.
 - `Victuals`: curated Faker wrapper with UK-leaning defaults.
 - `FixtureClock`: immutable epoch used to resolve relative fixture dates.
-- `Pattern`: repeatable batch runner with `count()` and optional per-pattern seed.
+- `Pattern`: repeatable resource-agnostic batch runner with `count()` and an optional per-pattern seed.
+- `Definition`, states, and `Sequence`: reusable builder recipes and explicit iteration variants.
 - `Group`: explicit callback boundary selected by `--only`; skipped callbacks are
   not evaluated.
 - `Builders`: explicit WordPress resource writers. Posts, terms, users, and
@@ -171,6 +174,58 @@ final class DemoMuster extends Muster
 }
 ```
 
+## Definitions, States, Sequences, and Hooks
+
+Definitions reuse ordinary builders; they are not Models or attribute maps.
+Named states transform a declaration, while an immutable Sequence derives its
+value from the one-based iteration index:
+
+```php
+$status = $this->sequence('draft', 'publish');
+$event = $this->definition(
+    'event',
+    fn (int $i) => $this->post('event')
+        ->key('event:' . $i)
+        ->slug('event-' . $i)
+        ->status($status->at($i))
+)->state(
+    'featured',
+    fn ($builder, int $i) => $builder->meta(['featured' => true])
+);
+
+$this->pattern('events')
+    ->count(6)
+    ->after('welcome-comment', fn ($post, int $i) =>
+        $this->comment($post)
+            ->key('comment:event:' . $i)
+            ->author('Fixture Editor')
+            ->content('Welcome')
+    )
+    ->using($event->with('featured'));
+```
+
+After-hooks may return a persistable declaration, an iterable of declarations,
+or `null`. Returned builders execute in both plan and apply and therefore appear
+as normal structured operations. The hook callback itself must not write.
+
+## Chaining and Logical References
+
+```php
+$this->call(UserMuster::class, EventMuster::class);
+
+$about = $this->ref('page:about'); // handle can be captured before the page exists
+$menu = $this->menu('Main Menu')->key('menu:main')->postItem($about, 'About');
+
+$this->page()->key('page:about')->title('About')->slug('about')->save();
+$menu->save(); // resolves page:about now
+```
+
+`call()` runs dependencies in declared order with the same clock, random source,
+ownership registry, groups, and report. Recursive graphs and duplicate calls
+fail loudly. A lazy ref uses the current Muster scope by default; pass another
+Muster class as the second argument for an explicit cross-scenario relationship.
+On a clean first run, save the target declaration before the consuming builder.
+
 ## Ownership and Cleanup
 
 ```php
@@ -240,6 +295,11 @@ separate invocations repeatable.
 The same seed, epoch, call order, locale, and inputs produce the same generated
 sequence. Calls through `victuals()->raw()` are outside this clock contract.
 
+Victuals also provides network-free `imageUrl()`, serialized
+`gutenbergBlocks()`, semantic `richContent()`, and explicit
+`repeaterRows($count, $schema)` helpers. Repeater schema callables receive the
+Victuals instance and one-based row index.
+
 ## WP-CLI Usage
 
 ```bash
@@ -248,12 +308,15 @@ wp capstan seed --epoch="2026-01-01 09:00:00+00:00"
 wp capstan seed --dry-run
 wp capstan seed --fresh --seed=1234
 wp capstan seed --dry-run --format=json
+wp capstan seed --verbose
+wp capstan seed --quiet
 
 wp capstan muster App\\Muster\\DemoMuster --seed=1234
 wp capstan muster App\\Muster\\DemoMuster --epoch="2026-01-01 09:00:00+00:00"
 wp capstan muster App\\Muster\\DemoMuster --dry-run
 wp capstan muster App\\Muster\\DemoMuster --only=events
 wp capstan muster App\\Muster\\DemoMuster --format=json
+wp capstan muster App\\Muster\\DemoMuster --verbose
 ```
 
 Flags:
@@ -263,6 +326,9 @@ Flags:
 - `--dry-run` performs the complete read-only plan and skips application.
 - `--format=json` emits one structured payload containing plan/apply operations
   and summaries, with no human log lines.
+- `--verbose` exposes builder diagnostics and full operation identity details.
+- `--quiet` suppresses successful human output; errors remain visible. JSON
+  output is still emitted when explicitly requested.
 - `--only=<csv>` executes only matching declaration group names.
 - `--fresh` is available on `wp capstan seed` and deletes only resources owned
   by that concrete Muster class before `run()`; no custom `fresh()` method is required.
@@ -324,3 +390,8 @@ bin/run-integration-tests.sh
 GitHub Actions runs both PHP 8.3/8.4 unit jobs and the WordPress 7.0.1
 integration job. Never point the integration configuration at a real site
 database: the WordPress test harness installs and clears prefixed tables.
+
+Integration tests can `use AssertsWordPressFixtures` for posts, terms, users,
+options, and comments. `MusterSnapshot::serialize()` and `assertMatches()`
+produce versioned `RunReport` JSON; volatile WordPress IDs are excluded by
+default and snapshot replacement is only performed by an explicit `write()`.

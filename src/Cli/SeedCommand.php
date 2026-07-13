@@ -15,7 +15,7 @@ namespace PressGang\Muster\Cli;
  * and that refusal is not flag-overridable by design.
  *
  * Usage:
- * `wp capstan seed [<muster-class>] [--fresh] [--seed=<int>] [--epoch=<datetime>] [--dry-run] [--only=<csv>] [--format=json]`
+ * `wp capstan seed [<muster-class>] [--fresh] [--seed=<int>] [--epoch=<datetime>] [--dry-run] [--only=<csv>] [--format=json] [--verbose|--quiet]`
  *
  * - `--fresh` deletes only resources recorded as owned by the selected Muster
  *   before seeding.
@@ -23,6 +23,7 @@ namespace PressGang\Muster\Cli;
  * - `--epoch` pins relative fixture dates independently of the random seed.
  * - `--only` selects named declaration groups.
  * - `--format=json` emits one machine-readable reconciliation payload.
+ * - `--verbose` exposes diagnostics; `--quiet` suppresses successful human output.
  * - Remaining flags behave exactly as in `wp capstan muster`.
  */
 final class SeedCommand

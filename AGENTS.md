@@ -47,10 +47,12 @@ If something is surprising, it is probably wrong.
   Immutable reference epoch for relative dates, independent of Faker's seed.
 - **Patterns**
   Repeatable specifications for generating multiple similar WordPress resources.
+- **Definitions, States, and Sequences**
+  Reusable explicit builder factories, named builder transformations, and immutable iteration-indexed values.
 - **Builders**
   Fluent builders for posts, terms, users, options, comments, attachments, and menus. Builders do the minimum required work to upsert data.
 - **Refs**
-  Immutable value objects returned from `save()` calls, used for linking entities.
+  Immutable values returned from `save()` plus logical-key `LazyRef` handles resolved by consuming builders at save-time.
 - **RunReport**
   Ordered create/update/keep/prune/conflict outcomes for a plan or apply pass.
 
@@ -100,7 +102,10 @@ Rules:
 - Patterns must be explicit.
 - `count()` is required.
 - `seed()` controls randomness only, not data selection.
-- The closure must return a Builder.
+- The closure must return `PersistableDeclaration`.
+- Definition states must return a persistable declaration and never write.
+- After-hooks may return persistable declarations only; the hook itself must not write.
+- Sequences derive values from the one-based iteration index and hold no cursor.
 
 ---
 
@@ -119,6 +124,8 @@ Rules:
 
 Each Pattern run receives its own Victuals instance.
 Every Victuals instance in one run receives the same FixtureClock.
+Victuals image URLs must remain self-contained; generation must not introduce
+implicit HTTP requests or dependence on a third-party placeholder service.
 
 ---
 
@@ -132,6 +139,10 @@ Every Victuals instance in one run receives the same FixtureClock.
   - Query unrelated data.
   - Infer defaults from globals.
   - Mutate unrelated state.
+
+Lazy refs use `Muster class + logical key` and resolve through the ownership
+registry. On the first run, a target declaration must be saved before its
+consumer is saved. Cross-Muster refs must name the target Muster scope.
 
 ### Idempotency
 
@@ -302,13 +313,13 @@ Example:
 /**
  * Execute the pattern using the provided builder factory.
  *
- * The callable must return a Builder instance. The builder will be
+ * The callable must return a PersistableDeclaration. The declaration will be
  * persisted automatically by the Pattern runner.
  *
- * @param callable(int $i): \PressGang\Muster\Builders\PostBuilder $factory
- * @return void
+ * @param callable(int $i): \PressGang\Muster\Contracts\PersistableDeclaration $factory
+ * @return \PressGang\Muster\Patterns\PatternResult
  */
-public function build(callable $factory): void
+public function build(callable $factory): PatternResult
 ```
 
 Fail fast if the contract is violated.
@@ -382,6 +393,7 @@ WordPress-native and is not a port of their Model or ORM abstractions.
 - `src/Victuals/*`
 - `src/Refs/*`
 - `src/Adapters/*`
+- `src/Testing/*`
 - `README.md`
 
 ---

@@ -24,7 +24,8 @@ final class Invoker
 {
     /**
      * Build a MusterContext from the standard CLI flags
-     * (`--seed=<int>`, `--epoch=<datetime>`, `--dry-run`, `--only=<csv>`).
+     * (`--seed=<int>`, `--epoch=<datetime>`, `--dry-run`, `--only=<csv>`,
+     * `--verbose`, and `--quiet`).
      *
      * ACF integration is auto-wired: when ACF is active the LiveAcfAdapter
      * applies `->acf()` payloads via update_field(); otherwise they no-op.
