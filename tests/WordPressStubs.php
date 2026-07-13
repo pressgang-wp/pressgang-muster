@@ -68,6 +68,7 @@ namespace {
                 'post_content' => (string) ($attrs['post_content'] ?? ''),
                 'post_excerpt' => (string) ($attrs['post_excerpt'] ?? ''),
                 'post_status' => (string) ($attrs['post_status'] ?? 'draft'),
+                'post_date' => (string) ($attrs['post_date'] ?? ''),
                 'post_parent' => (int) ($attrs['post_parent'] ?? 0),
                 'post_author' => (int) ($attrs['post_author'] ?? 0),
             ];

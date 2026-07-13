@@ -147,6 +147,55 @@ namespace PressGang\Muster\Tests {
             self::assertCount(0, $GLOBALS['__muster_wp_posts']);
         }
 
+        public function testEpochPinsRelativeDatesAcrossPlanAndApply(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], [
+                'only' => 'allowed',
+                'epoch' => '2026-01-01 09:00:00+00:00',
+                'format' => 'json',
+            ]);
+
+            self::assertSame(
+                '2026-01-08 09:00:00',
+                reset($GLOBALS['__muster_wp_posts'])['post_date']
+            );
+        }
+
+        public function testScenarioDefaultEpochIsUsedWhenFlagIsAbsent(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], [
+                'only' => 'allowed',
+                'format' => 'json',
+            ]);
+
+            self::assertSame(
+                '2025-01-08 09:00:00',
+                reset($GLOBALS['__muster_wp_posts'])['post_date']
+            );
+        }
+
+        public function testInvalidEpochIsAStructuredConflict(): void
+        {
+            try {
+                MusterCommand::handle([TestMusterForCli::class], [
+                    'epoch' => '+1 week',
+                    'format' => 'json',
+                ]);
+                self::fail('Expected conflict exit.');
+            } catch (WP_CLI_ExitException $error) {
+                self::assertSame('halt:1', $error->getMessage());
+            }
+
+            self::assertCount(1, $GLOBALS['__muster_wp_cli_lines']);
+            $payload = json_decode($GLOBALS['__muster_wp_cli_lines'][0], true, 512, JSON_THROW_ON_ERROR);
+
+            self::assertSame('conflict', $payload['status']);
+            self::assertStringContainsString(
+                'Fixture epoch must be an absolute date',
+                $payload['plan']['operations'][0]['message']
+            );
+        }
+
         public function testUnknownOnlyGroupIsAStructuredConflict(): void
         {
             try {
@@ -191,6 +240,11 @@ namespace PressGang\Muster\Tests {
 
     final class TestMusterForCli extends Muster
     {
+        public static function defaultEpoch(): string
+        {
+            return '2025-01-01 09:00:00+00:00';
+        }
+
         public function run(): void
         {
             $GLOBALS['__muster_cli_test_run_count'] = (int) ($GLOBALS['__muster_cli_test_run_count'] ?? 0) + 1;
@@ -199,7 +253,11 @@ namespace PressGang\Muster\Tests {
                 $this->pattern('allowed')->count(1)->build(function (int $i) {
                     $GLOBALS['__muster_cli_test_pattern_counter'] = (int) ($GLOBALS['__muster_cli_test_pattern_counter'] ?? 0) + 1;
 
-                    return $this->post('event')->key('allowed-' . $i)->title('A')->slug('allowed-' . $i);
+                    return $this->post('event')
+                        ->key('allowed-' . $i)
+                        ->title('A')
+                        ->slug('allowed-' . $i)
+                        ->date($this->at('+1 week')->format('Y-m-d H:i:s'));
                 });
             });
 

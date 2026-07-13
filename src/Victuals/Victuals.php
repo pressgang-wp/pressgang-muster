@@ -2,6 +2,9 @@
 
 namespace PressGang\Muster\Victuals;
 
+use DateTimeInterface;
+use PressGang\Muster\Clock\FixtureClock;
+
 /**
  * Curated Faker wrapper for deterministic, project-friendly generated values.
  *
@@ -10,8 +13,11 @@ namespace PressGang\Muster\Victuals;
  */
 final class Victuals
 {
-    public function __construct(private \Faker\Generator $faker)
+    private FixtureClock $clock;
+
+    public function __construct(private \Faker\Generator $faker, ?FixtureClock $clock = null)
     {
+        $this->clock = $clock ?? FixtureClock::system();
     }
 
     /**
@@ -185,11 +191,7 @@ final class Victuals
      */
     public function date(string $format = 'Y-m-d'): string
     {
-        if (method_exists($this->faker, 'date')) {
-            return (string) $this->faker->date($format);
-        }
-
-        return (new \DateTimeImmutable())->format($format);
+        return $this->dateBetween('-30 years', 'now')->format($format);
     }
 
     /**
@@ -200,25 +202,37 @@ final class Victuals
      */
     public function datetime(string $format = 'Y-m-d H:i:s'): string
     {
-        if (method_exists($this->faker, 'dateTime')) {
-            return $this->faker->dateTime()->format($format);
-        }
-
-        return (new \DateTimeImmutable())->format($format);
+        return $this->dateBetween('-30 years', 'now')->format($format);
     }
 
     /**
      * Generate a datetime constrained between two relative/absolute boundaries.
      *
-     * @param string $from
-     * @param string $to
-     * @return \DateTimeInterface
+     * Relative strings resolve from the fixture epoch, not the process clock.
+     *
+     * @param string|DateTimeInterface $from
+     * @param string|DateTimeInterface $to
+     * @return DateTimeInterface
      *
      * See: https://fakerphp.org/formatters/date-and-time/#datetimebetween
      */
-    public function dateBetween(string $from, string $to): \DateTimeInterface
+    public function dateBetween(string|DateTimeInterface $from, string|DateTimeInterface $to): DateTimeInterface
     {
-        return $this->faker->dateTimeBetween($from, $to);
+        return $this->faker->dateTimeBetween(
+            $this->clock->resolve($from)->format('Y-m-d H:i:s.uP'),
+            $this->clock->resolve($to)->format('Y-m-d H:i:s.uP'),
+            $this->clock->epoch()->getTimezone()->getName()
+        );
+    }
+
+    /**
+     * Return the immutable epoch used by date helpers.
+     *
+     * @return \DateTimeImmutable
+     */
+    public function epoch(): \DateTimeImmutable
+    {
+        return $this->clock->epoch();
     }
 
     /**

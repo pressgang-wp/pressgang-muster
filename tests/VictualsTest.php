@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Victuals\VictualsFactory;
 
 final class VictualsTest extends TestCase
@@ -53,5 +54,37 @@ final class VictualsTest extends TestCase
 
         self::assertIsString($content);
         self::assertStringContainsString("\n\n", $content);
+    }
+
+    public function testDateHelpersUsePinnedEpoch(): void
+    {
+        $victuals = (new VictualsFactory())->make(
+            1978,
+            new FixtureClock('2026-01-01 09:00:00+00:00')
+        );
+
+        self::assertSame(
+            '2026-01-01T09:00:00+00:00',
+            $victuals->dateBetween('now', 'now')->format(DATE_ATOM)
+        );
+        self::assertSame('2026-01-01T09:00:00+00:00', $victuals->epoch()->format(DATE_ATOM));
+    }
+
+    public function testSeedAndEpochProduceRepeatableDateSequence(): void
+    {
+        $draw = static function (): array {
+            $victuals = (new VictualsFactory())->make(
+                1978,
+                new FixtureClock('2026-01-01 09:00:00+00:00')
+            );
+
+            return [
+                $victuals->date(),
+                $victuals->datetime(),
+                $victuals->dateBetween('+1 week', '+6 months')->format(DATE_ATOM),
+            ];
+        };
+
+        self::assertSame($draw(), $draw());
     }
 }

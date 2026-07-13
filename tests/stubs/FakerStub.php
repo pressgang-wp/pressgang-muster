@@ -166,11 +166,16 @@ final class Generator
     }
 
     /**
-     * @param string $from
-     * @param string $to
+     * @param string|DateTimeInterface $from
+     * @param string|DateTimeInterface $to
+     * @param string|null $timezone
      * @return DateTimeInterface
      */
-    public function dateTimeBetween(string $from, string $to): DateTimeInterface
+    public function dateTimeBetween(
+        string|DateTimeInterface $from,
+        string|DateTimeInterface $to,
+        ?string $timezone = null,
+    ): DateTimeInterface
     {
         $base = new DateTimeImmutable('2026-01-01 00:00:00');
         $fromDate = $this->parseDate($base, $from);
@@ -190,11 +195,15 @@ final class Generator
 
     /**
      * @param DateTimeImmutable $base
-     * @param string $value
+     * @param string|DateTimeInterface $value
      * @return DateTimeImmutable
      */
-    private function parseDate(DateTimeImmutable $base, string $value): DateTimeImmutable
+    private function parseDate(DateTimeImmutable $base, string|DateTimeInterface $value): DateTimeImmutable
     {
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromInterface($value);
+        }
+
         $direct = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $value)
             ?: DateTimeImmutable::createFromFormat('Y-m-d', $value);
 

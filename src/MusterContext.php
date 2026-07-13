@@ -5,6 +5,7 @@ namespace PressGang\Muster;
 use LogicException;
 use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Adapters\NullAcfAdapter;
+use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Contracts\LoggerInterface;
 use PressGang\Muster\Contracts\NullLogger;
 use PressGang\Muster\Ownership\OwnershipRegistry;
@@ -23,6 +24,10 @@ final class MusterContext
     private ?OwnershipRegistry $ownership = null;
 
     private RunReport $report;
+
+    private FixtureClock $clock;
+
+    private bool $clockConfigured;
 
     private ?string $activeGroup = null;
 
@@ -44,6 +49,7 @@ final class MusterContext
      * @param array<string, int> $seedOverrides Per-pattern seed overrides by name.
      * @param bool $dryRun
      * @param array<int, string> $onlyGroups Optional allowlist of declaration group names.
+     * @param FixtureClock|null $clock Reference clock shared by all generated dates.
      */
     public function __construct(
         private VictualsFactory $victualsFactory,
@@ -53,10 +59,13 @@ final class MusterContext
         private array $seedOverrides = [],
         private bool $dryRun = false,
         private array $onlyGroups = [],
+        ?FixtureClock $clock = null,
     ) {
         $this->logger ??= new NullLogger();
         $this->acf ??= new NullAcfAdapter();
         $this->report = new RunReport();
+        $this->clockConfigured = $clock !== null;
+        $this->clock = $clock ?? FixtureClock::system();
     }
 
     /**
@@ -67,7 +76,7 @@ final class MusterContext
      */
     public function victuals(): Victuals
     {
-        $this->victuals ??= $this->victualsFactory->make($this->seed);
+        $this->victuals ??= $this->victualsFactory->make($this->seed, $this->clock);
 
         return $this->victuals;
     }
@@ -80,7 +89,7 @@ final class MusterContext
      */
     public function victualsForSeed(?int $seed = null): Victuals
     {
-        return $this->victualsFactory->make($seed ?? $this->seed);
+        return $this->victualsFactory->make($seed ?? $this->seed, $this->clock);
     }
 
     /**
@@ -89,6 +98,49 @@ final class MusterContext
     public function victualsFactory(): VictualsFactory
     {
         return $this->victualsFactory;
+    }
+
+    /**
+     * Access the immutable fixture clock for this execution pass.
+     *
+     * @return FixtureClock
+     */
+    public function clock(): FixtureClock
+    {
+        return $this->clock;
+    }
+
+    /**
+     * Report whether an explicit or scenario-default clock is already fixed.
+     *
+     * @return bool
+     */
+    public function hasConfiguredClock(): bool
+    {
+        return $this->clockConfigured;
+    }
+
+    /**
+     * Apply a Muster's default clock when the caller did not provide one.
+     *
+     * This construction-time hook refuses to replace a clock after Victuals
+     * has been created, which would split one run across two time references.
+     *
+     * @param FixtureClock $clock
+     * @return void
+     */
+    public function useDefaultClock(FixtureClock $clock): void
+    {
+        if ($this->clockConfigured) {
+            return;
+        }
+
+        if ($this->victuals !== null) {
+            throw new LogicException('Cannot apply a Muster default epoch after Victuals has been created.');
+        }
+
+        $this->clock = $clock;
+        $this->clockConfigured = true;
     }
 
     /**

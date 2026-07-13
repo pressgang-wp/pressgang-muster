@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Cli;
 
 use InvalidArgumentException;
+use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Contracts\NullLogger;
 use PressGang\Muster\Contracts\WpCliLogger;
 use PressGang\Muster\Muster;
@@ -23,16 +24,21 @@ final class Invoker
 {
     /**
      * Build a MusterContext from the standard CLI flags
-     * (`--seed=<int>`, `--dry-run`, `--only=<csv>`).
+     * (`--seed=<int>`, `--epoch=<datetime>`, `--dry-run`, `--only=<csv>`).
      *
      * ACF integration is auto-wired: when ACF is active the LiveAcfAdapter
      * applies `->acf()` payloads via update_field(); otherwise they no-op.
      *
      * @param array<string, mixed> $assocArgs
      * @param bool|null $dryRun Override the flag for an internal plan/apply pass.
+     * @param FixtureClock|null $clock Shared clock for an internal plan/apply lifecycle.
      * @return MusterContext
      */
-    public static function contextFromFlags(array $assocArgs, ?bool $dryRun = null): MusterContext
+    public static function contextFromFlags(
+        array $assocArgs,
+        ?bool $dryRun = null,
+        ?FixtureClock $clock = null,
+    ): MusterContext
     {
         $onlyRaw = (string) ($assocArgs['only'] ?? '');
         $only = $onlyRaw === ''
@@ -46,6 +52,7 @@ final class Invoker
             seed: isset($assocArgs['seed']) ? (int) $assocArgs['seed'] : null,
             dryRun: $dryRun ?? isset($assocArgs['dry-run']),
             onlyGroups: $only,
+            clock: $clock ?? self::clockFromFlags($assocArgs),
         );
     }
 
@@ -60,12 +67,37 @@ final class Invoker
      */
     public static function reconcile(string $musterClass, array $assocArgs, bool $fresh = false): array
     {
-        $planContext = self::contextFromFlags($assocArgs, true);
+        try {
+            $clock = self::clockFromFlags($assocArgs, $musterClass);
+            $planContext = self::contextFromFlags($assocArgs, true, $clock);
+        } catch (\Throwable $error) {
+            $planContext = new MusterContext(
+                new VictualsFactory(),
+                logger: self::isJson($assocArgs) ? new NullLogger() : new WpCliLogger(),
+                dryRun: true,
+            );
+            $planContext->report()->add(new Operation(
+                OperationAction::Conflict,
+                'muster',
+                $musterClass,
+                '',
+                '',
+                0,
+                $error->getMessage()
+            ));
+
+            return [
+                'plan' => $planContext->report(),
+                'apply' => null,
+                'error' => $error,
+            ];
+        }
+
         $error = self::runPass($musterClass, $planContext, $fresh);
         $applyReport = null;
 
         if ($error === null && !isset($assocArgs['dry-run']) && !$planContext->report()->hasConflicts()) {
-            $applyContext = self::contextFromFlags($assocArgs, false);
+            $applyContext = self::contextFromFlags($assocArgs, false, $clock);
             $error = self::runPass($musterClass, $applyContext, $fresh);
             $applyReport = $applyContext->report();
         }
@@ -184,6 +216,32 @@ final class Invoker
     public static function isJson(array $assocArgs): bool
     {
         return strtolower((string) ($assocArgs['format'] ?? 'text')) === 'json';
+    }
+
+    /**
+     * Parse an absolute fixture epoch or capture the process clock once.
+     *
+     * @param array<string, mixed> $assocArgs
+     * @param string $musterClass Optional Muster class providing a default epoch.
+     * @return FixtureClock
+     */
+    private static function clockFromFlags(array $assocArgs, string $musterClass = ''): FixtureClock
+    {
+        if (array_key_exists('epoch', $assocArgs)) {
+            return new FixtureClock((string) $assocArgs['epoch']);
+        }
+
+        if ($musterClass !== ''
+            && class_exists($musterClass)
+            && is_subclass_of($musterClass, Muster::class)) {
+            /** @var class-string<Muster> $musterClass */
+            $epoch = $musterClass::defaultEpoch();
+            if ($epoch !== null) {
+                return new FixtureClock($epoch);
+            }
+        }
+
+        return FixtureClock::system();
     }
 
     /**

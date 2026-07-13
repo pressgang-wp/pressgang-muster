@@ -3,6 +3,9 @@
 namespace PressGang\Muster;
 
 use BadMethodCallException;
+use DateTimeImmutable;
+use DateTimeInterface;
+use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\Acf\AcfValueGenerator;
 use PressGang\Muster\Acf\ContextProviders;
 use PressGang\Muster\Acf\ThemeAcf;
@@ -27,6 +30,24 @@ abstract class Muster
 
     public function __construct(protected MusterContext $context)
     {
+        $epoch = static::defaultEpoch();
+        if ($epoch !== null && !$this->context->hasConfiguredClock()) {
+            $this->context->useDefaultClock(new FixtureClock($epoch));
+        }
+    }
+
+    /**
+     * Define the scenario's default fixture epoch.
+     *
+     * Override this for repeatable date generation without a CLI flag. An
+     * explicit context clock or `--epoch` takes precedence over this value.
+     * Returning null captures the system clock once for the run.
+     *
+     * @return string|DateTimeInterface|null
+     */
+    public static function defaultEpoch(): string|DateTimeInterface|null
+    {
+        return null;
     }
 
     /**
@@ -242,6 +263,27 @@ abstract class Muster
         }
 
         return $this->context->victuals();
+    }
+
+    /**
+     * Return the reference instant for deterministic fixture dates.
+     *
+     * @return DateTimeImmutable
+     */
+    public function epoch(): DateTimeImmutable
+    {
+        return $this->context->clock()->epoch();
+    }
+
+    /**
+     * Resolve a date boundary against the fixture epoch.
+     *
+     * @param string|DateTimeInterface $boundary
+     * @return DateTimeImmutable
+     */
+    public function at(string|DateTimeInterface $boundary): DateTimeImmutable
+    {
+        return $this->context->clock()->resolve($boundary);
     }
 
     /**

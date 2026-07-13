@@ -2,6 +2,8 @@
 
 namespace PressGang\Muster\Victuals;
 
+use PressGang\Muster\Clock\FixtureClock;
+
 /**
  * Factory for creating deterministic Victuals instances.
  *
@@ -29,9 +31,10 @@ final class VictualsFactory
      * (one context, sequential draws) stay within this contract.
      *
      * @param int|null $seed
+     * @param FixtureClock|null $clock
      * @return Victuals
      */
-    public function make(?int $seed = null): Victuals
+    public function make(?int $seed = null, ?FixtureClock $clock = null): Victuals
     {
         $faker = \Faker\Factory::create($this->locale);
 
@@ -39,6 +42,6 @@ final class VictualsFactory
             $faker->seed($seed);
         }
 
-        return new Victuals($faker);
+        return new Victuals($faker, $clock);
     }
 }

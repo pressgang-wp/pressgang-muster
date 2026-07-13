@@ -10,7 +10,7 @@ namespace PressGang\Muster\Cli;
  * production guard) see {@see SeedCommand}.
  *
  * Usage:
- * `wp capstan muster <muster-class> [--seed=<int>] [--dry-run] [--only=<csv>] [--format=json]`
+ * `wp capstan muster <muster-class> [--seed=<int>] [--epoch=<datetime>] [--dry-run] [--only=<csv>] [--format=json]`
  *
  * The command always plans first. Unless `--dry-run` is present, it then runs
  * a revalidated application pass. `--only` selects named declaration groups,
