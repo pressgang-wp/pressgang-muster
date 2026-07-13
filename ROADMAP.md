@@ -3,9 +3,9 @@
 ## Current State
 
 Muster is a WordPress-native orchestrator for deterministic content
-provisioning and development fixtures. The current vertical slice is tested,
-but ownership-aware reconciliation and a real plan/apply lifecycle are required
-before the persistence architecture should be considered stable.
+provisioning and development fixtures. Ownership-aware reconciliation and the
+read-only plan/apply lifecycle are implemented; named declaration groups and a
+deterministic clock are the next major stability work.
 
 ### Implemented
 
@@ -15,10 +15,11 @@ before the persistence architecture should be considered stable.
 - **OptionBuilder** — WordPress options (upsert by `option_name`)
 - **Patterns** — batch factory runner with `count()`, per-pattern `seed()`, iteration index
 - **Victuals** — seeded Faker wrapper (en_GB) with WordPress-friendly helpers
-- **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, `--fresh`, visible dry-run intent, seed and Pattern filters
+- **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, owned `--fresh`, read-only planning, JSON reports, seed and Pattern filters
 - **ACF adapter interface** — pluggable ACF integration (NullAcfAdapter ships)
 - **Persistence contract** — documented `ensure`, `merge`, and `replace` semantics; merge is the current default
 - **Ownership contract** — required logical keys, explicit adoption, collision detection, and owned-only reset/prune
+- **Reconciliation reports** — plan/apply passes with create/update/keep/prune/conflict operations and JSON output
 - **Test suite** — WordPress API stubs and deterministic Faker coverage
 
 ---
@@ -34,8 +35,8 @@ before the persistence architecture should be considered stable.
 - [x] **Logical keys and ownership** — stable Muster identity independent of mutable slugs
 - [x] **Collision policy** — refuse unowned natural-key matches unless explicitly adopted
 - [x] **Owned reset/prune** — delete only resources owned by the selected Muster scenario
-- [ ] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
-- [ ] **Structured result output** — operation summaries and `--format=json`
+- [x] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
+- [x] **Structured result output** — operation summaries and `--format=json`
 - [ ] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns
 - [ ] **Deterministic clock** — separate the fixture epoch from Faker's random seed
 - [ ] **WordPress integration suite** — verify core API behaviour against a real WordPress runtime

@@ -16,6 +16,8 @@ Muster favors clarity over cleverness, and predictability over automation.
 - No global state mutation.
 - Do not add explicit `declare(strict_types=1);` headers; keep typed signatures/properties/returns instead.
 - No hidden randomness. All fake data must be seedable and deterministic.
+- Muster `run()` methods are declarative and side-effect free outside builders;
+  CLI application executes them once for planning and once for application.
 - WordPress remains the source of truth:
   - `wp_insert_post()`, `wp_update_post()`, `get_posts()`, etc.
 - Avoid magic:
@@ -44,6 +46,8 @@ If something is surprising, it is probably wrong.
   Fluent builders for posts, terms, users, and options. Builders do the minimum required work to upsert data.
 - **Refs**
   Immutable value objects returned from `save()` calls, used for linking entities.
+- **RunReport**
+  Ordered create/update/keep/prune/conflict outcomes for a plan or apply pass.
 
 ---
 
@@ -126,6 +130,14 @@ Existing unowned locator matches require explicit `adopt()` and resources owned
 by another Muster/key must never be stolen.
 
 Running the same Muster twice must not create duplicates.
+
+### Planning
+
+- Planning performs WordPress reads and no writes.
+- Builders must report one structured operation for every scoped declaration.
+- Planning conflicts prevent application.
+- Application re-resolves WordPress state; never assume a prior read remains valid.
+- Broad truncate and owned reset/prune operations must appear in the report too.
 
 ---
 

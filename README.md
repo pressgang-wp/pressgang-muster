@@ -39,6 +39,8 @@ Requirements:
 - WordPress-native builders for posts, pages, terms, users, options, menus, and attachments.
 - Stable logical keys and Muster-scoped ownership independent of mutable slugs.
 - Collision-safe adoption plus owned-only reset and pruning.
+- Read-only planning followed by revalidated application with operation summaries.
+- Machine-readable reconciliation output through `--format=json`.
 - Merge-safe post, term, and user updates that preserve omitted fields.
 - Seeded fake content through the curated `Victuals` Faker wrapper.
 - Repeatable post Patterns with declared counts and per-pattern seed overrides.
@@ -58,6 +60,8 @@ Full ecosystem documentation is available in the
 - `Builders`: explicit WordPress resource writers. Posts, terms, and users use
   merge-upsert behavior; menus rebuild their items, attachments are reused by
   slug, and `truncate()` is an explicitly destructive reset.
+- `RunReport`: ordered `create`, `update`, `keep`, `prune`, and `conflict`
+  operations for one planning or application pass.
 
 The orchestration model is informed by seeders and factories in frameworks such
 as Laravel, but Muster is not a Laravel port and does not introduce Models or an
@@ -84,6 +88,32 @@ An existing natural-key match is a conflict unless it is already owned by the
 same Muster key. Use `->adopt()` once to claim deliberately pre-existing data;
 adoption never steals another key's resource. Ownership records live in the
 non-autoloaded `pressgang_muster_registry` option.
+
+## Plan and Apply
+
+Every CLI invocation performs a read-only planning pass first. A normal command
+prints that plan, re-runs the same declarative Muster against current WordPress
+state, and applies the revalidated operations. `--dry-run` stops after planning.
+Any planning conflict prevents the application pass.
+
+Operations are reported as `create`, `update`, `keep`, `prune`, or `conflict`.
+Core post, term, user, and option fields can produce `keep`; declarations with
+ACF/meta/taxonomy side effects and authoritative menus are conservatively
+reported as updates when the resource already exists.
+
+```text
+Plan:
+  CREATE   post       page:about -> about-us
+  Summary: create=1 update=0 keep=0 prune=0 conflict=0
+Apply:
+  CREATE   post       page:about -> about-us
+  Summary: create=1 update=0 keep=0 prune=0 conflict=0
+```
+
+The apply pass calls `run()` a second time. Keep Muster classes declarative:
+do not send mail, make remote API calls, or perform unrelated writes inside
+`run()`. Builders remain the persistence boundary. Programmatic callers can
+inspect `$context->report()->operations()`, `summary()`, or `toArray()`.
 
 ## Quick Example
 
@@ -183,15 +213,19 @@ separate deterministic fixture epoch is planned.
 wp capstan seed --seed=1234
 wp capstan seed --dry-run
 wp capstan seed --fresh --seed=1234
+wp capstan seed --dry-run --format=json
 
 wp capstan muster App\\Muster\\DemoMuster --seed=1234
 wp capstan muster App\\Muster\\DemoMuster --dry-run
 wp capstan muster App\\Muster\\DemoMuster --only=events
+wp capstan muster App\\Muster\\DemoMuster --format=json
 ```
 
 Flags:
 - `--seed=<int>` sets global seed.
-- `--dry-run` emits current intent without writes.
+- `--dry-run` performs the complete read-only plan and skips application.
+- `--format=json` emits one structured payload containing plan/apply operations
+  and summaries, with no human log lines.
 - `--only=<csv>` executes only matching pattern names.
 - `--fresh` is available on `wp capstan seed` and deletes only resources owned
   by that concrete Muster class before `run()`; no custom `fresh()` method is required.
