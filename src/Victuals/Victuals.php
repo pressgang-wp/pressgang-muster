@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Victuals;
 
 use DateTimeInterface;
+use LogicException;
 use PressGang\Muster\Clock\FixtureClock;
 
 /**
@@ -142,6 +143,137 @@ final class Victuals
     }
 
     /**
+     * Generate a self-contained deterministic SVG data URL.
+     *
+     * The colour consumes the seeded Victuals stream. No remote placeholder
+     * service or network request is involved, making the URL suitable for
+     * HTML/ACF URL fixtures and stable visual test input.
+     *
+     * @param int $width
+     * @param int $height
+     * @param string|null $label
+     * @return string
+     */
+    public function imageUrl(int $width = 1200, int $height = 800, ?string $label = null): string
+    {
+        if ($width < 1 || $height < 1) {
+            throw new LogicException('Victuals image dimensions must be positive integers.');
+        }
+
+        $colour = (string) $this->faker->hexColor();
+        $text = htmlspecialchars($label ?? sprintf('%d × %d', $width, $height), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $svg = sprintf(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d"><rect width="100%%" height="100%%" fill="%s"/><text x="50%%" y="50%%" dominant-baseline="middle" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="%d">%s</text></svg>',
+            $width,
+            $height,
+            $width,
+            $height,
+            $colour,
+            max(12, (int) floor(min($width, $height) / 12)),
+            $text
+        );
+
+        return 'data:image/svg+xml;charset=UTF-8,' . rawurlencode($svg);
+    }
+
+    /**
+     * Generate valid serialized Gutenberg heading and paragraph blocks.
+     *
+     * @param int $paragraphs Number of paragraph blocks after the heading.
+     * @return string
+     */
+    public function gutenbergBlocks(int $paragraphs = 3): string
+    {
+        if ($paragraphs < 1) {
+            throw new LogicException('Victuals Gutenberg content requires at least one paragraph.');
+        }
+
+        $blocks = [sprintf(
+            "<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">%s</h2>\n<!-- /wp:heading -->",
+            $this->escapeHtml($this->headline())
+        )];
+
+        for ($i = 0; $i < $paragraphs; $i++) {
+            $blocks[] = sprintf(
+                "<!-- wp:paragraph -->\n<p>%s</p>\n<!-- /wp:paragraph -->",
+                $this->escapeHtml($this->faker->paragraph())
+            );
+        }
+
+        return implode("\n\n", $blocks);
+    }
+
+    /**
+     * Generate deterministic semantic HTML with varied editorial structures.
+     *
+     * @param int $sections Number of heading/paragraph sections.
+     * @return string
+     */
+    public function richContent(int $sections = 3): string
+    {
+        if ($sections < 1) {
+            throw new LogicException('Victuals rich content requires at least one section.');
+        }
+
+        $html = [];
+        for ($i = 0; $i < $sections; $i++) {
+            $html[] = sprintf('<h2>%s</h2>', $this->escapeHtml($this->headline()));
+            $html[] = sprintf('<p>%s</p>', $this->escapeHtml($this->faker->paragraph()));
+        }
+
+        $items = $this->faker->words(3);
+        $html[] = '<ul>' . implode('', array_map(
+            fn (mixed $item): string => sprintf('<li>%s</li>', $this->escapeHtml((string) $item)),
+            $items
+        )) . '</ul>';
+        $html[] = sprintf('<blockquote><p>%s</p></blockquote>', $this->escapeHtml($this->sentence(10)));
+        $html[] = sprintf(
+            '<p><a href="%s">%s</a></p>',
+            $this->escapeHtml($this->url()),
+            $this->escapeHtml($this->sentence(3))
+        );
+
+        return implode("\n", $html);
+    }
+
+    /**
+     * Generate explicit structured rows for an ACF repeater declaration.
+     *
+     * Callable schema values receive this Victuals instance and the one-based
+     * row index. Scalar/array values are copied unchanged into every row.
+     *
+     * @param int $count
+     * @param array<string, mixed|callable(self, int): mixed> $schema
+     * @return array<int, array<string, mixed>>
+     */
+    public function repeaterRows(int $count, array $schema): array
+    {
+        if ($count < 1) {
+            throw new LogicException('Victuals repeaterRows() count must be at least 1.');
+        }
+        if ($schema === []) {
+            throw new LogicException('Victuals repeaterRows() schema must not be empty.');
+        }
+
+        foreach (array_keys($schema) as $field) {
+            if (!is_string($field) || trim($field) === '') {
+                throw new LogicException('Victuals repeaterRows() schema keys must be non-empty strings.');
+            }
+        }
+
+        $rows = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $row = [];
+            foreach ($schema as $field => $value) {
+                $row[$field] = is_callable($value) ? $value($this, $i) : $value;
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
      * Generate a UK-style phone number shape.
      *
      * @return string
@@ -243,5 +375,10 @@ final class Victuals
     public function raw(): \Faker\Generator
     {
         return $this->faker;
+    }
+
+    private function escapeHtml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }

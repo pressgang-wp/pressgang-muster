@@ -39,6 +39,9 @@ final class VictualsTest extends TestCase
         self::assertIsString($victuals->company());
         self::assertIsString($victuals->email());
         self::assertIsString($victuals->url());
+        self::assertStringStartsWith('data:image/svg+xml;charset=UTF-8,', $victuals->imageUrl(640, 360));
+        self::assertStringContainsString('<!-- wp:paragraph -->', $victuals->gutenbergBlocks());
+        self::assertStringContainsString('<blockquote>', $victuals->richContent());
         self::assertIsString($victuals->ukPhone());
         self::assertIsString($victuals->ukPostcode());
         self::assertIsString($victuals->ukTown());
@@ -86,5 +89,36 @@ final class VictualsTest extends TestCase
         };
 
         self::assertSame($draw(), $draw());
+    }
+
+    public function testGeneratedContentHelpersAreDeterministicPerSequence(): void
+    {
+        $draw = static function (): array {
+            $victuals = (new VictualsFactory())->make(1978);
+
+            return [
+                $victuals->imageUrl(800, 450, 'Event image'),
+                $victuals->gutenbergBlocks(2),
+                $victuals->richContent(2),
+                $victuals->repeaterRows(2, [
+                    'title' => fn ($values, int $i): string => $i . '. ' . $values->headline(),
+                    'featured' => false,
+                ]),
+            ];
+        };
+
+        self::assertSame($draw(), $draw());
+    }
+
+    public function testRepeaterRowsUseOneBasedIndexesAndExplicitConstants(): void
+    {
+        $victuals = (new VictualsFactory())->make(42);
+        $rows = $victuals->repeaterRows(3, [
+            'position' => fn ($values, int $i): int => $i,
+            'enabled' => true,
+        ]);
+
+        self::assertSame([1, 2, 3], array_column($rows, 'position'));
+        self::assertSame([true, true, true], array_column($rows, 'enabled'));
     }
 }
