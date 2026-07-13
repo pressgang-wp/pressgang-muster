@@ -29,4 +29,14 @@ interface LoggerInterface
      * @return void
      */
     public function warning(string $message, array $context = []): void;
+
+    /**
+     * Report deterministic progress for one Pattern run.
+     *
+     * @param string $pattern
+     * @param int $current
+     * @param int $total
+     * @return void
+     */
+    public function progress(string $pattern, int $current, int $total): void;
 }

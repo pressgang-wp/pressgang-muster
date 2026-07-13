@@ -69,7 +69,7 @@ final class SeedCommand
             Invoker::fail('Seed failed: ' . $result['error']->getMessage());
         }
 
-        if (!Invoker::isJson($assocArgs)) {
+        if (!Invoker::isJson($assocArgs) && !Invoker::isQuiet($assocArgs)) {
             Invoker::emit(isset($assocArgs['dry-run']) ? 'Seed plan complete.' : 'Seed applied.');
         }
     }

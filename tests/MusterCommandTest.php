@@ -118,6 +118,39 @@ namespace PressGang\Muster\Tests {
             self::assertCount(0, $GLOBALS['__muster_wp_posts']);
         }
 
+        public function testQuietSuppressesSuccessfulHumanOutput(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed', 'quiet' => true]);
+
+            self::assertSame([], $GLOBALS['__muster_wp_cli_lines']);
+        }
+
+        public function testVerboseEmitsBuilderAndOperationDetails(): void
+        {
+            MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed', 'verbose' => true]);
+
+            self::assertNotEmpty(array_filter(
+                $GLOBALS['__muster_wp_cli_lines'],
+                static fn (string $line): bool => str_contains($line, 'Post create [event:allowed-1]')
+            ));
+            self::assertNotEmpty(array_filter(
+                $GLOBALS['__muster_wp_cli_lines'],
+                static fn (string $line): bool => str_contains($line, 'scope=') && str_contains($line, 'key=allowed-1')
+            ));
+        }
+
+        public function testLongPatternsEmitBoundedProgress(): void
+        {
+            MusterCommand::handle([ProgressMusterForCli::class], ['dry-run' => true]);
+
+            self::assertContains('Pattern [progress] progress: 12/12.', $GLOBALS['__muster_wp_cli_lines']);
+            $progress = array_filter(
+                $GLOBALS['__muster_wp_cli_lines'],
+                static fn (string $line): bool => str_contains($line, 'Pattern [progress] progress:')
+            );
+            self::assertLessThanOrEqual(10, count($progress));
+        }
+
         public function testJsonFormatEmitsOneStructuredPayload(): void
         {
             MusterCommand::handle([TestMusterForCli::class], ['only' => 'allowed', 'format' => 'json']);
@@ -268,6 +301,16 @@ namespace PressGang\Muster\Tests {
                     return $this->post('event')->key('blocked-' . $i)->title('B')->slug('blocked-' . $i);
                 });
             });
+        }
+    }
+
+    final class ProgressMusterForCli extends Muster
+    {
+        public function run(): void
+        {
+            $this->pattern('progress')->count(12)->build(
+                fn (int $i) => $this->post()->key('progress:' . $i)->slug('progress-' . $i)
+            );
         }
     }
 }

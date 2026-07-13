@@ -40,6 +40,10 @@ final class Invoker
         ?FixtureClock $clock = null,
     ): MusterContext
     {
+        if (isset($assocArgs['verbose']) && isset($assocArgs['quiet'])) {
+            throw new InvalidArgumentException('--verbose and --quiet cannot be used together.');
+        }
+
         $onlyRaw = (string) ($assocArgs['only'] ?? '');
         $only = $onlyRaw === ''
             ? []
@@ -47,7 +51,7 @@ final class Invoker
 
         return new MusterContext(
             new VictualsFactory(),
-            logger: self::isJson($assocArgs) ? new NullLogger() : new WpCliLogger(),
+            logger: self::loggerFromFlags($assocArgs),
             acf: function_exists('update_field') ? new \PressGang\Muster\Adapters\LiveAcfAdapter() : null,
             seed: isset($assocArgs['seed']) ? (int) $assocArgs['seed'] : null,
             dryRun: $dryRun ?? isset($assocArgs['dry-run']),
@@ -73,7 +77,7 @@ final class Invoker
         } catch (\Throwable $error) {
             $planContext = new MusterContext(
                 new VictualsFactory(),
-                logger: self::isJson($assocArgs) ? new NullLogger() : new WpCliLogger(),
+                logger: self::loggerFromFlags($assocArgs),
                 dryRun: true,
             );
             $planContext->report()->add(new Operation(
@@ -132,9 +136,14 @@ final class Invoker
             return;
         }
 
-        self::emitReport('Plan', $result['plan']);
+        if (self::isQuiet($assocArgs)) {
+            return;
+        }
+
+        $verbose = isset($assocArgs['verbose']);
+        self::emitReport('Plan', $result['plan'], $verbose);
         if ($result['apply'] !== null) {
-            self::emitReport('Apply', $result['apply']);
+            self::emitReport('Apply', $result['apply'], $verbose);
         }
     }
 
@@ -175,7 +184,7 @@ final class Invoker
         }
     }
 
-    private static function emitReport(string $label, RunReport $report): void
+    private static function emitReport(string $label, RunReport $report, bool $verbose = false): void
     {
         self::emit($label . ':');
 
@@ -196,6 +205,17 @@ final class Invoker
             }
 
             self::emit($message);
+
+            if ($verbose) {
+                self::emit(sprintf(
+                    '    scope=%s key=%s locator=%s id=%d group=%s',
+                    (string) $row['scope'],
+                    (string) $row['key'],
+                    (string) $row['locator'],
+                    (int) $row['id'],
+                    is_string($row['group']) && $row['group'] !== '' ? $row['group'] : '-'
+                ));
+            }
         }
 
         $summary = $report->summary();
@@ -216,6 +236,31 @@ final class Invoker
     public static function isJson(array $assocArgs): bool
     {
         return strtolower((string) ($assocArgs['format'] ?? 'text')) === 'json';
+    }
+
+    /**
+     * @param array<string, mixed> $assocArgs
+     * @return bool
+     */
+    public static function isQuiet(array $assocArgs): bool
+    {
+        return isset($assocArgs['quiet']) && !self::isJson($assocArgs);
+    }
+
+    /**
+     * @param array<string, mixed> $assocArgs
+     * @return \PressGang\Muster\Contracts\LoggerInterface
+     */
+    private static function loggerFromFlags(array $assocArgs): \PressGang\Muster\Contracts\LoggerInterface
+    {
+        if (self::isJson($assocArgs)) {
+            return new NullLogger();
+        }
+
+        return new WpCliLogger(
+            verbose: isset($assocArgs['verbose']),
+            quiet: self::isQuiet($assocArgs)
+        );
     }
 
     /**

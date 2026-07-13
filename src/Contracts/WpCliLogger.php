@@ -11,6 +11,10 @@ namespace PressGang\Muster\Contracts;
  */
 final class WpCliLogger implements LoggerInterface
 {
+    public function __construct(private bool $verbose = false, private bool $quiet = false)
+    {
+    }
+
     /**
      * @param string $message
      * @param array<string, mixed> $context
@@ -20,7 +24,7 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if (!class_exists('\\WP_CLI')) {
+        if ($this->quiet || !class_exists('\\WP_CLI')) {
             return;
         }
 
@@ -42,7 +46,17 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if (class_exists('\\WP_CLI') && method_exists('\\WP_CLI', 'debug')) {
+        if ($this->quiet || !class_exists('\\WP_CLI')) {
+            return;
+        }
+
+        if ($this->verbose) {
+            $this->info($message);
+
+            return;
+        }
+
+        if (method_exists('\\WP_CLI', 'debug')) {
             \WP_CLI::debug($message, 'muster');
         }
     }
@@ -56,7 +70,7 @@ final class WpCliLogger implements LoggerInterface
     {
         unset($context);
 
-        if (!class_exists('\\WP_CLI')) {
+        if ($this->quiet || !class_exists('\\WP_CLI')) {
             return;
         }
 
@@ -67,5 +81,22 @@ final class WpCliLogger implements LoggerInterface
         }
 
         \WP_CLI::line('Warning: ' . $message);
+    }
+
+    public function progress(string $pattern, int $current, int $total): void
+    {
+        if ($this->quiet || $total < 1) {
+            return;
+        }
+
+        $step = max(1, (int) ceil($total / 10));
+        if (!$this->verbose && $total < 10) {
+            return;
+        }
+        if (!$this->verbose && $current !== $total && $current % $step !== 0) {
+            return;
+        }
+
+        $this->info(sprintf('Pattern [%s] progress: %d/%d.', $pattern, $current, $total));
     }
 }

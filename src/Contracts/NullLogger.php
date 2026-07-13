@@ -33,4 +33,8 @@ final class NullLogger implements LoggerInterface
     public function warning(string $message, array $context = []): void
     {
     }
+
+    public function progress(string $pattern, int $current, int $total): void
+    {
+    }
 }

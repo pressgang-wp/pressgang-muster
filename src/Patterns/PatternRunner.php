@@ -51,6 +51,7 @@ final class PatternRunner
 
                 $ref = $result->save();
                 $this->runAfterHooks($pattern, $ref, $i);
+                $pattern->context()->logger()->progress($pattern->name(), $i, $iterations);
             }
         } finally {
             $muster->endPatternVictualsScope();

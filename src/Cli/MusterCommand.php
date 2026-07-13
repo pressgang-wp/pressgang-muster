@@ -60,7 +60,7 @@ final class MusterCommand
             Invoker::fail('Muster failed: ' . $result['error']->getMessage());
         }
 
-        if (!Invoker::isJson($assocArgs)) {
+        if (!Invoker::isJson($assocArgs) && !Invoker::isQuiet($assocArgs)) {
             Invoker::emit(isset($assocArgs['dry-run']) ? 'Muster plan complete.' : 'Muster applied.');
         }
     }
