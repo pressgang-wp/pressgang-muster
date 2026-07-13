@@ -152,7 +152,7 @@ final class OwnershipTest extends TestCase
         (new PostBuilder($context, 'page'))->title('Manual')->slug('manual')->save();
         $muster->page()->key('about')->title('About')->slug('about')->save();
         $muster->term('category')->key('featured')->name('Featured')->slug('featured')->save();
-        $muster->user('fixture-editor')->key('editor')->email('editor@example.test')->save();
+        $muster->user('fixture-editor')->key('editor')->password('fixture-password')->email('editor@example.test')->save();
         $muster->option('fixture_mode')->key('mode')->value('on')->save();
         $muster->menu('Fixture Menu')->key('menu')->link('Home', '/')->save();
         $muster->attachment('fixture-image')->key('image')->placeholder(8, 8)->save();

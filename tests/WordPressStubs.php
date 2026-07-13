@@ -346,6 +346,7 @@ namespace {
             $GLOBALS['__muster_wp_users'][$login] = [
                 'ID' => $id,
                 'user_login' => $login,
+                'user_pass' => (string) ($attrs['user_pass'] ?? ''),
                 'user_email' => (string) ($attrs['user_email'] ?? ''),
                 'display_name' => (string) ($attrs['display_name'] ?? ''),
                 'role' => (string) ($attrs['role'] ?? ''),

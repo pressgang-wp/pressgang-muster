@@ -20,6 +20,7 @@ final class UserBuilderTest extends TestCase
 
         $ref = (new UserBuilder($context))
             ->login('editor-one')
+            ->password('initial-password')
             ->email('editor-one@example.test')
             ->displayName('Editor One')
             ->role('editor')
@@ -37,6 +38,7 @@ final class UserBuilderTest extends TestCase
 
         $first = (new UserBuilder($context))
             ->login('same-user')
+            ->password('initial-password')
             ->displayName('One')
             ->save();
 
@@ -55,6 +57,7 @@ final class UserBuilderTest extends TestCase
 
         (new UserBuilder($context))
             ->login('merge-user')
+            ->password('initial-password')
             ->email('keep@example.test')
             ->displayName('Original name')
             ->role('editor')
@@ -77,9 +80,38 @@ final class UserBuilderTest extends TestCase
 
         $ref = (new UserBuilder($context))
             ->login('dry-user')
+            ->password('initial-password')
             ->save();
 
         self::assertSame(0, $ref->userId());
         self::assertCount(0, $GLOBALS['__muster_wp_users']);
+    }
+
+    public function testNewUserRequiresExplicitInitialPassword(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('requires an explicit initial password via password()');
+
+        (new UserBuilder($context))->login('missing-password')->save();
+    }
+
+    public function testExistingUserPasswordIsNotResetOnRerun(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new UserBuilder($context))
+            ->login('stable-password')
+            ->password('initial-password')
+            ->save();
+
+        (new UserBuilder($context))
+            ->login('stable-password')
+            ->password('different-password')
+            ->displayName('Updated')
+            ->save();
+
+        self::assertSame('initial-password', $GLOBALS['__muster_wp_users']['stable-password']['user_pass']);
     }
 }

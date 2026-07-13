@@ -15,7 +15,8 @@ use PressGang\Muster\Results\OperationAction;
  *
  * Muster-scoped builders use an explicit logical key; `user_login` is the
  * immutable WordPress locator. Existing users retain values for fields not set
- * on this builder; passing an empty value explicitly clears that field.
+ * on this builder; passing an empty value explicitly clears that field. New
+ * users require an explicit create-only password.
  */
 final class UserBuilder
 {
@@ -54,6 +55,23 @@ final class UserBuilder
     public function login(string $login): self
     {
         $this->payload['user_login'] = $login;
+
+        return $this;
+    }
+
+    /**
+     * Set the initial password required when WordPress creates the user.
+     *
+     * The password is create-only. Muster deliberately leaves credentials
+     * untouched on later runs because WordPress stores only a one-way hash and
+     * cannot prove that a declared plaintext password is already satisfied.
+     *
+     * @param string $password
+     * @return self
+     */
+    public function password(string $password): self
+    {
+        $this->payload['user_pass'] = $password;
 
         return $this;
     }
@@ -124,7 +142,8 @@ final class UserBuilder
      * Managed identity is `Muster class + logical key`; the immutable WordPress
      * locator is `user_login`. Unowned locator matches require `adopt()`.
      * Existing users are updated via `wp_update_user()`, missing users are inserted
-     * with `wp_insert_user()`. User meta is applied using `update_user_meta()`.
+     * with `wp_insert_user()` and require `password()`. User meta is applied
+     * using `update_user_meta()`; existing credentials are never reset.
      *
      * See: https://developer.wordpress.org/reference/functions/get_user_by/
      * See: https://developer.wordpress.org/reference/functions/wp_update_user/
@@ -192,9 +211,22 @@ final class UserBuilder
             }
         }
 
-        $attributes = [
-            'user_login' => $login,
-        ];
+        $existingId = $existing !== false && $existing !== null && isset($existing->ID)
+            ? (int) $existing->ID
+            : null;
+
+        if ($existingId === null
+            && (!array_key_exists('user_pass', $this->payload) || (string) $this->payload['user_pass'] === '')) {
+            throw new LogicException(sprintf(
+                'New user [%s] requires an explicit initial password via password().',
+                $login
+            ));
+        }
+
+        $attributes = ['user_login' => $login];
+        if ($existingId === null) {
+            $attributes['user_pass'] = (string) $this->payload['user_pass'];
+        }
 
         foreach (['user_email', 'display_name', 'role'] as $field) {
             if (array_key_exists($field, $this->payload)) {
@@ -202,9 +234,6 @@ final class UserBuilder
             }
         }
 
-        $existingId = $existing !== false && $existing !== null && isset($existing->ID)
-            ? (int) $existing->ID
-            : null;
         $operation = $this->userOperation($existing, $attributes, $owned);
         $plannedId = $existingId ?? 0;
 

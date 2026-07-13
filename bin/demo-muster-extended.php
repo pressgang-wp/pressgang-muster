@@ -66,6 +66,7 @@ $muster = new class($context) extends Muster {
     {
         $this->user('demo-editor')
             ->key('user:demo-editor')
+            ->password('demo-password')
             ->email('demo-editor@example.test')
             ->displayName('Demo Editor')
             ->role('editor')

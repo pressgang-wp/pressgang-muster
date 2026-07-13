@@ -32,7 +32,7 @@ final class AllResourceReconciliationMuster extends Muster
     {
         $this->page()->key('page')->title('Page')->slug('page')->save();
         $this->term('category')->key('term')->name('Term')->slug('term')->save();
-        $this->user('fixture-user')->key('user')->email('fixture@example.test')->save();
+        $this->user('fixture-user')->key('user')->password('fixture-password')->email('fixture@example.test')->save();
         $this->option('fixture_option')->key('option')->value('value')->save();
         $this->attachment('fixture-image')->key('attachment')->placeholder(8, 8)->save();
         $this->menu('Fixture Menu')->key('menu')->link('Home', '/')->save();
