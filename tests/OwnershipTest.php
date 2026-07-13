@@ -158,6 +158,8 @@ final class OwnershipTest extends TestCase
         $muster->attachment('fixture-image')->key('image')->placeholder(8, 8)->save();
 
         self::assertSame(6, $muster->resetOwned());
+        self::assertSame(6, $context->report()->summary()['create']);
+        self::assertSame(6, $context->report()->summary()['prune']);
         self::assertSame([1], get_posts(['name' => 'manual', 'post_type' => 'page']));
         self::assertSame([], get_posts(['name' => 'about', 'post_type' => 'page']));
         self::assertFalse(get_term_by('slug', 'featured', 'category'));
@@ -208,9 +210,11 @@ final class OwnershipTest extends TestCase
         $muster = $this->muster();
         $muster->page()->key('about')->title('About')->slug('about')->save();
 
-        $dryRun = new OwnedSiteMuster(new MusterContext(new VictualsFactory(), dryRun: true));
+        $dryContext = new MusterContext(new VictualsFactory(), dryRun: true);
+        $dryRun = new OwnedSiteMuster($dryContext);
 
         self::assertSame(1, $dryRun->resetOwned());
+        self::assertSame(1, $dryContext->report()->summary()['prune']);
         self::assertSame([1], get_posts(['name' => 'about', 'post_type' => 'page']));
         self::assertArrayHasKey(OwnedSiteMuster::class, get_option(OwnershipRegistry::OPTION, []));
     }

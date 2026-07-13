@@ -7,8 +7,8 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
-use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Fluent post builder with idempotent merge-upsert behaviour.
@@ -210,27 +210,29 @@ final class PostBuilder
         $slug = $this->resolveSlug();
         $intent = $this->ownershipIntent();
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(
-                sprintf('Dry run post upsert [%s:%s].', $this->postType, $slug)
-            );
-
-            return new PostRef(0, $this->postType, $slug);
-        }
-
-        if (!function_exists('get_posts') || !function_exists('wp_insert_post') || !function_exists('wp_update_post')) {
-            throw new RuntimeException('WordPress runtime functions are required to save posts.');
+        if (!function_exists('get_posts')) {
+            throw new RuntimeException('get_posts() is required to plan or save posts.');
         }
 
         $naturalId = $this->findBySlug($slug);
+        if ($naturalId !== null
+            && $this->context->isPlannedDeleted('post', $naturalId, $this->postType, $slug)) {
+            $naturalId = null;
+        }
+
         $existingId = $naturalId;
+        $owned = null;
 
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'post', $this->postType);
 
             $ownedId = $owned === null ? null : $this->resolveOwnedPostId($owned);
+            if ($ownedId !== null
+                && $this->context->isPlannedDeleted('post', $ownedId, $this->postType, $owned->locator())) {
+                $ownedId = null;
+            }
             if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                throw new OwnershipConflict(sprintf(
+                $this->throwOwnershipConflict($this->context, $intent, 'post', $naturalId, $slug, sprintf(
                     'Cannot move owned post [%s:%s] to slug [%s]; that slug belongs to post ID %d.',
                     $intent['scope'],
                     $intent['key'],
@@ -272,14 +274,37 @@ final class PostBuilder
             $attributes['edit_date'] = true;
         }
 
+        $operation = $this->postOperation($existingId, $attributes, $owned, $slug);
+        $plannedId = $existingId ?? 0;
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'post', $plannedId, $slug);
+                $this->recordOwnership($this->context, $intent, 'post', $plannedId, $this->postType, $slug);
+            }
+
+            return new PostRef($plannedId, $this->postType, $slug);
+        }
+
+        if ($operation === OperationAction::Keep && $existingId !== null) {
+            if ($intent !== null) {
+                $this->recordOwnership($this->context, $intent, 'post', $existingId, $this->postType, $slug);
+                $this->reportOwnership($this->context, $intent, $operation, 'post', $existingId, $slug);
+            }
+
+            return new PostRef($existingId, $this->postType, $slug);
+        }
+
+        if (!function_exists('wp_insert_post') || !function_exists('wp_update_post')) {
+            throw new RuntimeException('WordPress write functions are required to save posts.');
+        }
+
         /** @var int|\WP_Error $saveResult */
         $saveResult = 0;
-        $action = 'created';
 
         if ($existingId !== null) {
             $attributes['ID'] = $existingId;
             $saveResult = wp_update_post($attributes, true);
-            $action = 'updated';
         } else {
             $saveResult = wp_insert_post($attributes, true);
         }
@@ -321,13 +346,66 @@ final class PostBuilder
 
         if ($intent !== null) {
             $this->recordOwnership($this->context, $intent, 'post', $postId, $this->postType, $slug);
+            $this->reportOwnership($this->context, $intent, $operation, 'post', $postId, $slug);
         }
 
         $this->context->logger()->debug(
-            sprintf('Post %s [%s:%s] as ID %d.', $action, $this->postType, $slug, $postId)
+            sprintf('Post %s [%s:%s] as ID %d.', $operation->value, $this->postType, $slug, $postId)
         );
 
         return new PostRef($postId, $this->postType, $slug);
+    }
+
+    /**
+     * Determine whether the declaration creates, updates, or keeps the post.
+     *
+     * Meta, taxonomy, template, and ACF payloads are conservatively reported
+     * as updates until those adapters expose comparable read contracts.
+     *
+     * @param int|null $existingId
+     * @param array<string, mixed> $attributes
+     * @param OwnedResource|null $owned
+     * @param string $slug
+     * @return OperationAction
+     */
+    private function postOperation(
+        ?int $existingId,
+        array $attributes,
+        ?OwnedResource $owned,
+        string $slug,
+    ): OperationAction {
+        if ($existingId === null) {
+            if ($owned !== null && $this->context->ownership()->isPlannedClaim($owned->scope(), $owned->key())) {
+                return OperationAction::Keep;
+            }
+
+            return OperationAction::Create;
+        }
+
+        if ($owned === null || $owned->locator() !== $slug
+            || !empty($this->payload['meta_input'])
+            || isset($this->payload['page_template'])
+            || $this->taxInput !== []
+            || !empty($this->payload['acf'])) {
+            return OperationAction::Update;
+        }
+
+        $post = function_exists('get_post') ? get_post($existingId) : null;
+        if (!is_object($post)) {
+            return OperationAction::Update;
+        }
+
+        foreach ($attributes as $field => $value) {
+            if ($field === 'edit_date') {
+                continue;
+            }
+
+            if (!property_exists($post, $field) || (string) $post->{$field} !== (string) $value) {
+                return OperationAction::Update;
+            }
+        }
+
+        return OperationAction::Keep;
     }
 
     private function findBySlug(string $slug): ?int

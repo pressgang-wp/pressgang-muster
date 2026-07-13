@@ -4,6 +4,8 @@ namespace PressGang\Muster\Ownership;
 
 use RuntimeException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Results\Operation;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Persists Muster logical ownership in one non-autoloaded WordPress option.
@@ -22,12 +24,21 @@ final class OwnershipRegistry
      */
     private array $touched = [];
 
+    /**
+     * @var array<string, array<string, OwnedResource>>
+     */
+    private array $plannedClaims = [];
+
     public function __construct(private MusterContext $context)
     {
     }
 
     public function find(string $scope, string $key): ?OwnedResource
     {
+        if (isset($this->plannedClaims[$scope][$key])) {
+            return $this->plannedClaims[$scope][$key];
+        }
+
         $record = $this->records()[$scope][$key] ?? null;
 
         if ($record === null) {
@@ -107,12 +118,25 @@ final class OwnershipRegistry
         $this->touched[$resource->scope()][$resource->key()] = true;
 
         if ($this->context->dryRun()) {
+            $this->plannedClaims[$resource->scope()][$resource->key()] = $resource;
             return;
         }
 
         $records = $this->records();
         $records[$resource->scope()][$resource->key()] = $resource->toArray();
         $this->persist($records);
+    }
+
+    /**
+     * Check whether the read-only pass already declared this logical key.
+     *
+     * @param string $scope
+     * @param string $key
+     * @return bool
+     */
+    public function isPlannedClaim(string $scope, string $key): bool
+    {
+        return isset($this->plannedClaims[$scope][$key]);
     }
 
     /**
@@ -145,7 +169,9 @@ final class OwnershipRegistry
 
         if ($this->context->dryRun()) {
             foreach ($remove as $key) {
-                $this->context->logger()->info(sprintf('Dry run delete owned resource [%s:%s].', $scope, $key));
+                $this->context->logger()->info(sprintf('Planning delete owned resource [%s:%s].', $scope, $key));
+                $this->context->markPlannedDeletion($owned[$key]);
+                $this->reportPrune($owned[$key]);
             }
 
             return count($remove);
@@ -157,6 +183,7 @@ final class OwnershipRegistry
         try {
             foreach ($remove as $key) {
                 $this->delete($owned[$key]);
+                $this->reportPrune($owned[$key]);
                 unset($records[$scope][$key]);
                 $changed = true;
             }
@@ -173,6 +200,18 @@ final class OwnershipRegistry
         unset($this->touched[$scope]);
 
         return count($remove);
+    }
+
+    private function reportPrune(OwnedResource $resource): void
+    {
+        $this->context->report()->add(new Operation(
+            OperationAction::Prune,
+            $resource->type(),
+            $resource->scope(),
+            $resource->key(),
+            $resource->locator(),
+            $resource->id()
+        ));
     }
 
     private function findByResource(OwnedResource $requested): ?OwnedResource

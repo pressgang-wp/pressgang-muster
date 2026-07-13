@@ -7,8 +7,8 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
-use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Fluent term builder with idempotent merge-upsert behaviour.
@@ -157,29 +157,36 @@ final class TermBuilder
         $name = (string) ($this->payload['name'] ?? $slug);
         $intent = $this->ownershipIntent();
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(
-                sprintf('Dry run term upsert [%s:%s].', $this->taxonomy, $slug)
-            );
-
-            return new TermRef(0, $this->taxonomy, $slug);
-        }
-
-        if (!function_exists('get_term_by') || !function_exists('wp_insert_term') || !function_exists('wp_update_term')) {
-            throw new RuntimeException('WordPress term runtime functions are required to save terms.');
+        if (!function_exists('get_term_by')) {
+            throw new RuntimeException('get_term_by() is required to plan or save terms.');
         }
 
         $natural = get_term_by('slug', $slug, $this->taxonomy);
+        if ($natural !== false && isset($natural->term_id)
+            && $this->context->isPlannedDeleted('term', (int) $natural->term_id, $this->taxonomy, $slug)) {
+            $natural = false;
+        }
+
         $existing = $natural;
+        $owned = null;
 
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'term', $this->taxonomy);
 
             $ownedTerm = $owned === null ? null : $this->resolveOwnedTerm($owned);
+            if ($ownedTerm !== null && isset($ownedTerm->term_id)
+                && $this->context->isPlannedDeleted(
+                    'term',
+                    (int) $ownedTerm->term_id,
+                    $this->taxonomy,
+                    $owned->locator()
+                )) {
+                $ownedTerm = null;
+            }
             if ($ownedTerm !== null && $natural !== false
                 && isset($natural->term_id)
                 && (int) $ownedTerm->term_id !== (int) $natural->term_id) {
-                throw new OwnershipConflict(sprintf(
+                $this->throwOwnershipConflict($this->context, $intent, 'term', (int) $natural->term_id, $slug, sprintf(
                     'Cannot move owned term [%s:%s] to slug [%s]; that slug belongs to term ID %d.',
                     $intent['scope'],
                     $intent['key'],
@@ -213,17 +220,43 @@ final class TermBuilder
             $attributes['parent'] = $this->resolveParentId($this->payload['parent']);
         }
 
-        /** @var array<string, mixed>|\WP_Error $result */
-        $result = [];
-        $action = 'created';
+        if ($existing !== false && $existing !== null && array_key_exists('name', $this->payload)) {
+            $attributes['name'] = (string) $this->payload['name'];
+        }
 
-        if ($existing !== false && isset($existing->term_id)) {
-            if (array_key_exists('name', $this->payload)) {
-                $attributes['name'] = (string) $this->payload['name'];
+        $existingId = $existing !== false && $existing !== null && isset($existing->term_id)
+            ? (int) $existing->term_id
+            : null;
+        $operation = $this->termOperation($existing, $attributes, $owned, $slug);
+        $plannedId = $existingId ?? 0;
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'term', $plannedId, $slug);
+                $this->recordOwnership($this->context, $intent, 'term', $plannedId, $this->taxonomy, $slug);
             }
 
+            return new TermRef($plannedId, $this->taxonomy, $slug);
+        }
+
+        if ($operation === OperationAction::Keep && $existingId !== null) {
+            if ($intent !== null) {
+                $this->recordOwnership($this->context, $intent, 'term', $existingId, $this->taxonomy, $slug);
+                $this->reportOwnership($this->context, $intent, $operation, 'term', $existingId, $slug);
+            }
+
+            return new TermRef($existingId, $this->taxonomy, $slug);
+        }
+
+        if (!function_exists('wp_insert_term') || !function_exists('wp_update_term')) {
+            throw new RuntimeException('WordPress write functions are required to save terms.');
+        }
+
+        /** @var array<string, mixed>|\WP_Error $result */
+        $result = [];
+
+        if ($existing !== false && isset($existing->term_id)) {
             $result = wp_update_term((int) $existing->term_id, $this->taxonomy, $attributes);
-            $action = 'updated';
         } else {
             $result = wp_insert_term($name, $this->taxonomy, $attributes);
         }
@@ -251,13 +284,50 @@ final class TermBuilder
 
         if ($intent !== null) {
             $this->recordOwnership($this->context, $intent, 'term', $termId, $this->taxonomy, $slug);
+            $this->reportOwnership($this->context, $intent, $operation, 'term', $termId, $slug);
         }
 
         $this->context->logger()->debug(
-            sprintf('Term %s [%s:%s] as ID %d.', $action, $this->taxonomy, $slug, $termId)
+            sprintf('Term %s [%s:%s] as ID %d.', $operation->value, $this->taxonomy, $slug, $termId)
         );
 
         return new TermRef($termId, $this->taxonomy, $slug);
+    }
+
+    /**
+     * @param object|false|null $existing
+     * @param array<string, mixed> $attributes
+     * @param OwnedResource|null $owned
+     * @param string $slug
+     * @return OperationAction
+     */
+    private function termOperation(
+        object|false|null $existing,
+        array $attributes,
+        ?OwnedResource $owned,
+        string $slug,
+    ): OperationAction {
+        if ($existing === false || $existing === null) {
+            if ($owned !== null && $this->context->ownership()->isPlannedClaim($owned->scope(), $owned->key())) {
+                return OperationAction::Keep;
+            }
+
+            return OperationAction::Create;
+        }
+
+        if ($owned === null || $owned->locator() !== $slug
+            || !empty($this->payload['meta'])
+            || !empty($this->payload['acf'])) {
+            return OperationAction::Update;
+        }
+
+        foreach ($attributes as $field => $value) {
+            if (!property_exists($existing, $field) || (string) $existing->{$field} !== (string) $value) {
+                return OperationAction::Update;
+            }
+        }
+
+        return OperationAction::Keep;
     }
 
     private function resolveOwnedTerm(OwnedResource $owned): ?object

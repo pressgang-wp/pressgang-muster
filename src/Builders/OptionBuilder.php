@@ -7,6 +7,7 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnershipRegistry;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Fluent builder for WordPress options.
@@ -70,8 +71,8 @@ final class OptionBuilder
      * Persist the option to WordPress.
      *
      * Uses `update_option()` when available (upsert behaviour), or `add_option()`
-     * as a fallback. Unowned option-name matches require `adopt()`. In dry-run
-     * mode, this method logs intent and performs no write.
+     * as a fallback. Unowned option-name matches require `adopt()`. In planning
+     * mode, this resolves state and reports an operation without writing.
      *
      * See: https://developer.wordpress.org/reference/functions/update_option/
      * See: https://developer.wordpress.org/reference/functions/add_option/
@@ -87,16 +88,11 @@ final class OptionBuilder
             throw new LogicException('Muster cannot manage its own ownership registry option.');
         }
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(sprintf('Dry run option upsert [%s].', $this->key));
-
-            return;
+        if (!function_exists('get_option')) {
+            throw new RuntimeException('get_option() is required to plan or save options.');
         }
 
-        if (!function_exists('update_option') && !function_exists('add_option')) {
-            throw new RuntimeException('WordPress option runtime functions are required to save options.');
-        }
-
+        $owned = null;
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'option', 'option');
             if ($owned !== null && $owned->locator() !== $this->key) {
@@ -109,17 +105,50 @@ final class OptionBuilder
                 ));
             }
 
-            $sentinel = new \stdClass();
-            $exists = function_exists('get_option') && get_option($this->key, $sentinel) !== $sentinel;
-            if ($exists) {
-                $this->claimExistingOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+        }
+
+        $sentinel = new \stdClass();
+        $current = get_option($this->key, $sentinel);
+        $exists = $current !== $sentinel
+            && !$this->context->isPlannedDeleted('option', 0, 'option', $this->key);
+
+        if ($intent !== null && $exists) {
+            $this->claimExistingOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+        }
+
+        $plannedClaim = $intent !== null
+            && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
+        $operation = !$exists
+            ? ($plannedClaim ? OperationAction::Keep : OperationAction::Create)
+            : ($owned === null || $current !== $this->value ? OperationAction::Update : OperationAction::Keep);
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
+                $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
             }
+
+            return;
+        }
+
+        if ($operation === OperationAction::Keep) {
+            if ($intent !== null) {
+                $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
+            }
+
+            return;
+        }
+
+        if (!function_exists('update_option') && !function_exists('add_option')) {
+            throw new RuntimeException('WordPress write functions are required to save options.');
         }
 
         if (function_exists('update_option')) {
             update_option($this->key, $this->value, $this->autoload);
             if ($intent !== null) {
                 $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+                $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
             }
             $this->context->logger()->debug(sprintf('Option updated [%s].', $this->key));
 
@@ -129,6 +158,7 @@ final class OptionBuilder
         add_option($this->key, $this->value, '', $this->autoload ? 'yes' : 'no');
         if ($intent !== null) {
             $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
+            $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
         }
         $this->context->logger()->debug(sprintf('Option inserted [%s].', $this->key));
     }

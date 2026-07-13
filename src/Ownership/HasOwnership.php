@@ -4,6 +4,8 @@ namespace PressGang\Muster\Ownership;
 
 use LogicException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Results\Operation;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Adds explicit logical identity and adoption intent to a resource builder.
@@ -106,11 +108,22 @@ trait HasOwnership
         $owned = $context->ownership()->find($intent['scope'], $intent['key']);
 
         if ($owned !== null && ($owned->type() !== $type || $owned->subtype() !== $subtype)) {
-            throw new OwnershipConflict(sprintf(
+            $error = new OwnershipConflict(sprintf(
                 'Logical key [%s:%s] already identifies a different resource type.',
                 $intent['scope'],
                 $intent['key']
             ));
+            $context->report()->add(new Operation(
+                OperationAction::Conflict,
+                $type,
+                $intent['scope'],
+                $intent['key'],
+                $owned->locator(),
+                $owned->id(),
+                $error->getMessage()
+            ));
+
+            throw $error;
         }
 
         return $owned;
@@ -135,10 +148,24 @@ trait HasOwnership
         string $subtype,
         string $locator,
     ): void {
-        $context->ownership()->assertClaimable(
-            new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator),
-            $intent['adopt']
-        );
+        try {
+            $context->ownership()->assertClaimable(
+                new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator),
+                $intent['adopt']
+            );
+        } catch (OwnershipConflict $error) {
+            $context->report()->add(new Operation(
+                OperationAction::Conflict,
+                $type,
+                $intent['scope'],
+                $intent['key'],
+                $locator,
+                $id,
+                $error->getMessage()
+            ));
+
+            throw $error;
+        }
     }
 
     /**
@@ -163,5 +190,66 @@ trait HasOwnership
         $context->ownership()->record(
             new OwnedResource($intent['scope'], $intent['key'], $type, $id, $subtype, $locator)
         );
+    }
+
+    /**
+     * Add one resource outcome to the current reconciliation report.
+     *
+     * @param MusterContext $context
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param OperationAction $action
+     * @param string $type
+     * @param int $id
+     * @param string $locator
+     * @return void
+     */
+    private function reportOwnership(
+        MusterContext $context,
+        array $intent,
+        OperationAction $action,
+        string $type,
+        int $id,
+        string $locator,
+    ): void {
+        $context->report()->add(new Operation(
+            $action,
+            $type,
+            $intent['scope'],
+            $intent['key'],
+            $locator,
+            $id
+        ));
+    }
+
+    /**
+     * Record a resource-addressed conflict and abort the current pass.
+     *
+     * @param MusterContext $context
+     * @param array{scope: string, key: string, adopt: bool} $intent
+     * @param string $type
+     * @param int $id
+     * @param string $locator
+     * @param string $message
+     * @return never
+     */
+    private function throwOwnershipConflict(
+        MusterContext $context,
+        array $intent,
+        string $type,
+        int $id,
+        string $locator,
+        string $message,
+    ): never {
+        $context->report()->add(new Operation(
+            OperationAction::Conflict,
+            $type,
+            $intent['scope'],
+            $intent['key'],
+            $locator,
+            $id,
+            $message
+        ));
+
+        throw new OwnershipConflict($message);
     }
 }

@@ -4,6 +4,9 @@ namespace PressGang\Muster\Builders;
 
 use RuntimeException;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Results\Operation;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Clean-slate reset helper for re-seedable environments.
@@ -40,14 +43,8 @@ final class TruncateBuilder
      */
     public function posts(string $postType): self
     {
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(sprintf('Dry run truncate posts [%s].', $postType));
-
-            return $this;
-        }
-
-        if (!function_exists('get_posts') || !function_exists('wp_delete_post')) {
-            throw new RuntimeException('WordPress runtime functions are required to truncate posts.');
+        if (!function_exists('get_posts')) {
+            throw new RuntimeException('get_posts() is required to plan or truncate posts.');
         }
 
         $ids = get_posts([
@@ -60,7 +57,19 @@ final class TruncateBuilder
         ]);
 
         foreach ($ids as $id) {
+            $resource = new OwnedResource('truncate', "post:{$postType}:{$id}", 'post', (int) $id, $postType, $postType);
+            if ($this->context->dryRun()) {
+                $this->context->markPlannedDeletion($resource);
+                $this->reportPrune($resource);
+                continue;
+            }
+
+            if (!function_exists('wp_delete_post')) {
+                throw new RuntimeException('wp_delete_post() is required to truncate posts.');
+            }
+
             wp_delete_post((int) $id, true);
+            $this->reportPrune($resource);
         }
 
         $this->context->logger()->debug(sprintf('Truncated %d posts [%s].', count($ids), $postType));
@@ -80,14 +89,8 @@ final class TruncateBuilder
      */
     public function terms(string $taxonomy): self
     {
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(sprintf('Dry run truncate terms [%s].', $taxonomy));
-
-            return $this;
-        }
-
-        if (!function_exists('get_terms') || !function_exists('wp_delete_term')) {
-            throw new RuntimeException('WordPress runtime functions are required to truncate terms.');
+        if (!function_exists('get_terms')) {
+            throw new RuntimeException('get_terms() is required to plan or truncate terms.');
         }
 
         $ids = get_terms([
@@ -101,11 +104,35 @@ final class TruncateBuilder
         }
 
         foreach ((array) $ids as $id) {
+            $resource = new OwnedResource('truncate', "term:{$taxonomy}:{$id}", 'term', (int) $id, $taxonomy, $taxonomy);
+            if ($this->context->dryRun()) {
+                $this->context->markPlannedDeletion($resource);
+                $this->reportPrune($resource);
+                continue;
+            }
+
+            if (!function_exists('wp_delete_term')) {
+                throw new RuntimeException('wp_delete_term() is required to truncate terms.');
+            }
+
             wp_delete_term((int) $id, $taxonomy);
+            $this->reportPrune($resource);
         }
 
         $this->context->logger()->debug(sprintf('Truncated %d terms [%s].', count((array) $ids), $taxonomy));
 
         return $this;
+    }
+
+    private function reportPrune(OwnedResource $resource): void
+    {
+        $this->context->report()->add(new Operation(
+            OperationAction::Prune,
+            $resource->type(),
+            $resource->scope(),
+            $resource->key(),
+            $resource->locator(),
+            $resource->id()
+        ));
     }
 }

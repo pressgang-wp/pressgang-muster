@@ -52,5 +52,6 @@ final class TruncateBuilderTest extends TestCase
 
         self::assertSame([], $GLOBALS['__muster_wp_deleted_posts']);
         self::assertSame([], $GLOBALS['__muster_wp_deleted_terms']);
+        self::assertSame(1, $dry->report()->summary()['prune']);
     }
 }

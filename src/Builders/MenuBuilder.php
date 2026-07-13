@@ -6,10 +6,10 @@ use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
-use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\MenuRef;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\TermRef;
+use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Support\WpResult;
 
 /**
@@ -148,21 +148,15 @@ final class MenuBuilder
 
         $intent = $this->ownershipIntent();
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(
-                sprintf('Dry run menu rebuild [%s] with %d items.', $this->name, count($this->items))
-            );
-
-            return new MenuRef(0, $this->name);
-        }
-
-        if (!function_exists('wp_create_nav_menu') || !function_exists('wp_update_nav_menu_item')) {
-            throw new RuntimeException('WordPress runtime functions are required to save menus.');
-        }
-
         $natural = function_exists('wp_get_nav_menu_object') ? wp_get_nav_menu_object($this->name) : false;
         $naturalId = is_object($natural) && isset($natural->term_id) ? (int) $natural->term_id : null;
+        if ($naturalId !== null
+            && $this->context->isPlannedDeleted('menu', $naturalId, 'nav_menu', $this->name)) {
+            $naturalId = null;
+        }
+
         $ownedId = null;
+        $owned = null;
 
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'menu', 'nav_menu');
@@ -170,16 +164,48 @@ final class MenuBuilder
             if ($owned !== null && function_exists('wp_get_nav_menu_object')) {
                 $ownedMenu = wp_get_nav_menu_object($owned->id());
                 $ownedId = is_object($ownedMenu) && isset($ownedMenu->term_id) ? (int) $ownedMenu->term_id : null;
+                if ($ownedId !== null
+                    && $this->context->isPlannedDeleted('menu', $ownedId, 'nav_menu', $owned->locator())) {
+                    $ownedId = null;
+                }
             }
 
             if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                throw new OwnershipConflict(sprintf('Menu name [%s] belongs to a different menu.', $this->name));
+                $this->throwOwnershipConflict(
+                    $this->context,
+                    $intent,
+                    'menu',
+                    $naturalId,
+                    $this->name,
+                    sprintf('Menu name [%s] belongs to a different menu.', $this->name)
+                );
             }
 
             $existingId = $ownedId ?? $naturalId;
             if ($existingId !== null) {
                 $this->claimExistingOwnership($this->context, $intent, 'menu', $existingId, 'nav_menu', $this->name);
             }
+        }
+
+        $existingId = $ownedId ?? $naturalId;
+        $plannedClaim = $intent !== null
+            && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
+        $operation = $existingId === null
+            ? ($plannedClaim ? OperationAction::Keep : OperationAction::Create)
+            : OperationAction::Update;
+        $plannedId = $existingId ?? 0;
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'menu', $plannedId, $this->name);
+                $this->recordOwnership($this->context, $intent, 'menu', $plannedId, 'nav_menu', $this->name);
+            }
+
+            return new MenuRef($plannedId, $this->name);
+        }
+
+        if (!function_exists('wp_create_nav_menu') || !function_exists('wp_update_nav_menu_item')) {
+            throw new RuntimeException('WordPress write functions are required to save menus.');
         }
 
         $menuId = $this->upsertMenu($ownedId);
@@ -190,6 +216,7 @@ final class MenuBuilder
 
         if ($intent !== null) {
             $this->recordOwnership($this->context, $intent, 'menu', $menuId, 'nav_menu', $this->name);
+            $this->reportOwnership($this->context, $intent, $operation, 'menu', $menuId, $this->name);
         }
 
         $this->context->logger()->debug(

@@ -7,6 +7,8 @@ use PressGang\Muster\Adapters\NullAcfAdapter;
 use PressGang\Muster\Contracts\LoggerInterface;
 use PressGang\Muster\Contracts\NullLogger;
 use PressGang\Muster\Ownership\OwnershipRegistry;
+use PressGang\Muster\Ownership\OwnedResource;
+use PressGang\Muster\Results\RunReport;
 use PressGang\Muster\Victuals\Victuals;
 use PressGang\Muster\Victuals\VictualsFactory;
 
@@ -18,6 +20,13 @@ final class MusterContext
     private ?Victuals $victuals = null;
 
     private ?OwnershipRegistry $ownership = null;
+
+    private RunReport $report;
+
+    /**
+     * @var array<string, true>
+     */
+    private array $plannedDeletions = [];
 
     /**
      * @param VictualsFactory $victualsFactory
@@ -39,6 +48,7 @@ final class MusterContext
     ) {
         $this->logger ??= new NullLogger();
         $this->acf ??= new NullAcfAdapter();
+        $this->report = new RunReport();
     }
 
     /**
@@ -102,6 +112,59 @@ final class MusterContext
         $this->ownership ??= new OwnershipRegistry($this);
 
         return $this->ownership;
+    }
+
+    /**
+     * Access the ordered reconciliation report for this execution pass.
+     *
+     * @return RunReport
+     */
+    public function report(): RunReport
+    {
+        return $this->report;
+    }
+
+    /**
+     * Mark a resource as absent from the planning overlay after planned pruning.
+     *
+     * @param OwnedResource $resource
+     * @return void
+     */
+    public function markPlannedDeletion(OwnedResource $resource): void
+    {
+        $this->plannedDeletions[$this->resourceToken(
+            $resource->type(),
+            $resource->id(),
+            $resource->subtype(),
+            $resource->locator()
+        )] = true;
+    }
+
+    /**
+     * Check whether a prior planned operation removes this resource.
+     *
+     * @param string $type
+     * @param int $id
+     * @param string $subtype
+     * @param string $locator
+     * @return bool
+     */
+    public function isPlannedDeleted(string $type, int $id, string $subtype, string $locator): bool
+    {
+        return isset($this->plannedDeletions[$this->resourceToken($type, $id, $subtype, $locator)]);
+    }
+
+    private function resourceToken(string $type, int $id, string $subtype, string $locator): string
+    {
+        $family = match ($type) {
+            'attachment' => 'post',
+            'menu' => 'term',
+            default => $type,
+        };
+
+        return $id > 0
+            ? sprintf('%s:id:%d', $family, $id)
+            : sprintf('%s:%s:%s', $family, $subtype, $locator);
     }
 
     /**

@@ -6,8 +6,9 @@ use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
-use PressGang\Muster\Ownership\OwnershipConflict;
+use PressGang\Muster\Ownership\OwnedResource;
 use PressGang\Muster\Refs\UserRef;
+use PressGang\Muster\Results\OperationAction;
 
 /**
  * Fluent user builder with idempotent merge-upsert behaviour.
@@ -139,23 +140,27 @@ final class UserBuilder
         $login = $this->resolveLogin();
         $intent = $this->ownershipIntent();
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(sprintf('Dry run user upsert [%s].', $login));
-
-            return new UserRef(0, $login);
-        }
-
-        if (!function_exists('get_user_by') || !function_exists('wp_insert_user') || !function_exists('wp_update_user')) {
-            throw new RuntimeException('WordPress user runtime functions are required to save users.');
+        if (!function_exists('get_user_by')) {
+            throw new RuntimeException('get_user_by() is required to plan or save users.');
         }
 
         $natural = get_user_by('login', $login);
+        if ($natural !== false && isset($natural->ID)
+            && $this->context->isPlannedDeleted('user', (int) $natural->ID, 'user', $login)) {
+            $natural = false;
+        }
+
         $existing = $natural;
+        $owned = null;
 
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'user', 'user');
 
             $ownedUser = $owned === null ? null : get_user_by('id', $owned->id());
+            if ($ownedUser !== false && $ownedUser !== null && isset($ownedUser->ID)
+                && $this->context->isPlannedDeleted('user', (int) $ownedUser->ID, 'user', $owned->locator())) {
+                $ownedUser = null;
+            }
             if ($ownedUser !== false && $ownedUser !== null) {
                 if (isset($ownedUser->user_login) && (string) $ownedUser->user_login !== $login) {
                     throw new LogicException(sprintf(
@@ -173,7 +178,14 @@ final class UserBuilder
             if ($existing !== false && $existing !== null && isset($existing->ID)) {
                 if ($natural !== false && $natural !== null && isset($natural->ID)
                     && (int) $natural->ID !== (int) $existing->ID) {
-                    throw new OwnershipConflict(sprintf('User login [%s] belongs to a different user.', $login));
+                    $this->throwOwnershipConflict(
+                        $this->context,
+                        $intent,
+                        'user',
+                        (int) $natural->ID,
+                        $login,
+                        sprintf('User login [%s] belongs to a different user.', $login)
+                    );
                 }
 
                 $this->claimExistingOwnership($this->context, $intent, 'user', (int) $existing->ID, 'user', $login);
@@ -190,14 +202,40 @@ final class UserBuilder
             }
         }
 
+        $existingId = $existing !== false && $existing !== null && isset($existing->ID)
+            ? (int) $existing->ID
+            : null;
+        $operation = $this->userOperation($existing, $attributes, $owned);
+        $plannedId = $existingId ?? 0;
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'user', $plannedId, $login);
+                $this->recordOwnership($this->context, $intent, 'user', $plannedId, 'user', $login);
+            }
+
+            return new UserRef($plannedId, $login);
+        }
+
+        if ($operation === OperationAction::Keep && $existingId !== null) {
+            if ($intent !== null) {
+                $this->recordOwnership($this->context, $intent, 'user', $existingId, 'user', $login);
+                $this->reportOwnership($this->context, $intent, $operation, 'user', $existingId, $login);
+            }
+
+            return new UserRef($existingId, $login);
+        }
+
+        if (!function_exists('wp_insert_user') || !function_exists('wp_update_user')) {
+            throw new RuntimeException('WordPress write functions are required to save users.');
+        }
+
         /** @var int|\WP_Error $result */
         $result = 0;
-        $action = 'created';
 
         if ($existing !== false && isset($existing->ID)) {
             $attributes['ID'] = (int) $existing->ID;
             $result = wp_update_user($attributes);
-            $action = 'updated';
         } else {
             $result = wp_insert_user($attributes);
         }
@@ -217,11 +255,41 @@ final class UserBuilder
 
         if ($intent !== null) {
             $this->recordOwnership($this->context, $intent, 'user', $userId, 'user', $login);
+            $this->reportOwnership($this->context, $intent, $operation, 'user', $userId, $login);
         }
 
-        $this->context->logger()->debug(sprintf('User %s [%s] as ID %d.', $action, $login, $userId));
+        $this->context->logger()->debug(sprintf('User %s [%s] as ID %d.', $operation->value, $login, $userId));
 
         return new UserRef($userId, $login);
+    }
+
+    /**
+     * @param object|false|null $existing
+     * @param array<string, mixed> $attributes
+     * @param OwnedResource|null $owned
+     * @return OperationAction
+     */
+    private function userOperation(object|false|null $existing, array $attributes, ?OwnedResource $owned): OperationAction
+    {
+        if ($existing === false || $existing === null) {
+            if ($owned !== null && $this->context->ownership()->isPlannedClaim($owned->scope(), $owned->key())) {
+                return OperationAction::Keep;
+            }
+
+            return OperationAction::Create;
+        }
+
+        if ($owned === null || !empty($this->payload['meta'])) {
+            return OperationAction::Update;
+        }
+
+        foreach ($attributes as $field => $value) {
+            if (!property_exists($existing, $field) || (string) $existing->{$field} !== (string) $value) {
+                return OperationAction::Update;
+            }
+        }
+
+        return OperationAction::Keep;
     }
 
     /**

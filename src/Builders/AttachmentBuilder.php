@@ -7,8 +7,8 @@ use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
-use PressGang\Muster\Ownership\OwnershipConflict;
 use PressGang\Muster\Refs\PostRef;
+use PressGang\Muster\Results\OperationAction;
 use PressGang\Muster\Support\WpResult;
 
 /**
@@ -158,27 +158,29 @@ final class AttachmentBuilder
 
         $intent = $this->ownershipIntent();
 
-        if ($this->context->dryRun()) {
-            $this->context->logger()->info(
-                sprintf('Dry run attachment upsert [attachment:%s].', $this->slug)
-            );
-
-            return new PostRef(0, 'attachment', $this->slug);
-        }
-
-        if (!function_exists('get_posts') || !function_exists('wp_insert_attachment') || !function_exists('wp_upload_dir')) {
-            throw new RuntimeException('WordPress runtime functions are required to save attachments.');
+        if (!function_exists('get_posts')) {
+            throw new RuntimeException('get_posts() is required to plan or save attachments.');
         }
 
         $naturalId = $this->findExistingId();
+        if ($naturalId !== null
+            && $this->context->isPlannedDeleted('attachment', $naturalId, 'attachment', $this->slug)) {
+            $naturalId = null;
+        }
+
         $attachmentId = $naturalId;
+        $owned = null;
 
         if ($intent !== null) {
             $owned = $this->currentOwnership($this->context, $intent, 'attachment', 'attachment');
 
             $ownedId = $owned === null ? null : $this->resolveOwnedAttachmentId($owned);
+            if ($ownedId !== null
+                && $this->context->isPlannedDeleted('attachment', $ownedId, 'attachment', $owned->locator())) {
+                $ownedId = null;
+            }
             if ($ownedId !== null && $naturalId !== null && $ownedId !== $naturalId) {
-                throw new OwnershipConflict(sprintf(
+                $this->throwOwnershipConflict($this->context, $intent, 'attachment', $naturalId, $this->slug, sprintf(
                     'Cannot move owned attachment [%s:%s] to slug [%s]; that slug belongs to attachment ID %d.',
                     $intent['scope'],
                     $intent['key'],
@@ -200,11 +202,44 @@ final class AttachmentBuilder
             }
         }
 
-        $action = 'reused';
+        $plannedClaim = $intent !== null
+            && $this->context->ownership()->isPlannedClaim($intent['scope'], $intent['key']);
+        $operation = $attachmentId === null
+            ? ($plannedClaim ? OperationAction::Keep : OperationAction::Create)
+            : (($intent !== null && ($owned === null
+                || $owned->locator() !== $this->slug
+                || $this->title !== null
+                || $this->parent !== null
+                || $this->alt !== null
+                || $this->featuredOn !== null))
+                ? OperationAction::Update
+                : OperationAction::Keep);
+        $plannedId = $attachmentId ?? 0;
+
+        if ($this->context->dryRun()) {
+            if ($intent !== null) {
+                $this->reportOwnership($this->context, $intent, $operation, 'attachment', $plannedId, $this->slug);
+                $this->recordOwnership($this->context, $intent, 'attachment', $plannedId, 'attachment', $this->slug);
+            }
+
+            return new PostRef($plannedId, 'attachment', $this->slug);
+        }
+
+        if ($operation === OperationAction::Keep && $attachmentId !== null) {
+            if ($intent !== null) {
+                $this->recordOwnership($this->context, $intent, 'attachment', $attachmentId, 'attachment', $this->slug);
+                $this->reportOwnership($this->context, $intent, $operation, 'attachment', $attachmentId, $this->slug);
+            }
+
+            return new PostRef($attachmentId, 'attachment', $this->slug);
+        }
+
+        if (!function_exists('wp_insert_attachment') || !function_exists('wp_upload_dir')) {
+            throw new RuntimeException('WordPress write functions are required to save attachments.');
+        }
 
         if ($attachmentId === null) {
             $attachmentId = $this->insertAttachment();
-            $action = 'created';
         } elseif ($intent !== null) {
             if (!function_exists('wp_update_post')) {
                 throw new RuntimeException('wp_update_post() is required to update owned attachments.');
@@ -228,8 +263,6 @@ final class AttachmentBuilder
             if (!WpResult::isId($result)) {
                 throw new RuntimeException(sprintf('Failed to update owned attachment [%s].', $this->slug));
             }
-
-            $action = 'updated';
         }
 
         if ($this->alt !== null && function_exists('update_post_meta')) {
@@ -249,10 +282,18 @@ final class AttachmentBuilder
                 'attachment',
                 $this->slug
             );
+            $this->reportOwnership(
+                $this->context,
+                $intent,
+                $operation,
+                'attachment',
+                $attachmentId,
+                $this->slug
+            );
         }
 
         $this->context->logger()->debug(
-            sprintf('Attachment %s [attachment:%s] as ID %d.', $action, $this->slug, $attachmentId)
+            sprintf('Attachment %s [attachment:%s] as ID %d.', $operation->value, $this->slug, $attachmentId)
         );
 
         return new PostRef($attachmentId, 'attachment', $this->slug);
