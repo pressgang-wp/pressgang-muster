@@ -5,6 +5,7 @@ namespace PressGang\Muster\Tests;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Builders\OptionBuilder;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Refs\OptionRef;
 use PressGang\Muster\Victuals\VictualsFactory;
 
 final class OptionBuilderTest extends TestCase
@@ -18,11 +19,13 @@ final class OptionBuilderTest extends TestCase
     {
         $context = new MusterContext(new VictualsFactory());
 
-        (new OptionBuilder($context, 'site_mode'))
+        $ref = (new OptionBuilder($context, 'site_mode'))
             ->value('live')
             ->autoload(false)
             ->save();
 
+        self::assertInstanceOf(OptionRef::class, $ref);
+        self::assertSame('site_mode', $ref->name());
         self::assertSame('live', $GLOBALS['__muster_wp_options']['site_mode']['value']);
         self::assertSame(false, $GLOBALS['__muster_wp_options']['site_mode']['autoload']);
     }

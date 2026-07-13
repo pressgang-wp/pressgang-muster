@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
@@ -18,7 +19,7 @@ use PressGang\Muster\Results\OperationAction;
  * on this builder; passing an empty value explicitly clears that field. New
  * users require an explicit create-only password.
  */
-final class UserBuilder
+final class UserBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 

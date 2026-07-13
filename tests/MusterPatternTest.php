@@ -7,9 +7,11 @@ use BadMethodCallException;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Builders\PostBuilder;
+use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
+use UnexpectedValueException;
 
 final class MusterPatternTest extends TestCase
 {
@@ -65,6 +67,32 @@ final class MusterPatternTest extends TestCase
 
         self::assertSame($runA, $runB);
         self::assertCount(3, $GLOBALS['__muster_wp_posts']);
+    }
+
+    public function testPatternPersistsAnyDeclarationContract(): void
+    {
+        $muster = $this->makeMuster(new MusterContext(new VictualsFactory(), seed: 100));
+
+        $muster->pattern('event-types')
+            ->count(2)
+            ->build(
+                fn (int $i): TermBuilder => $muster->term('event_type')
+                    ->key('event-type:' . $i)
+                    ->name('Type ' . $i)
+                    ->slug('type-' . $i)
+            );
+
+        self::assertCount(2, $GLOBALS['__muster_wp_terms']);
+    }
+
+    public function testPatternFailsLoudlyForAnUnsupportedReturnValue(): void
+    {
+        $muster = $this->makeMuster(new MusterContext(new VictualsFactory()));
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('iteration 1 must return PersistableDeclaration; received [stdClass]');
+
+        $muster->pattern('invalid')->count(1)->build(fn (int $i): object => new \stdClass());
     }
 
     public function testMagicCallResolvesRegisteredPostType(): void

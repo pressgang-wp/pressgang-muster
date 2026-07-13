@@ -3,11 +3,13 @@
 namespace PressGang\Muster\Builders;
 
 use LogicException;
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnershipRegistry;
 use PressGang\Muster\Results\OperationAction;
+use PressGang\Muster\Refs\OptionRef;
 
 /**
  * Fluent builder for WordPress options.
@@ -16,7 +18,7 @@ use PressGang\Muster\Results\OperationAction;
  * on `save()`. Managed identity is an explicit logical key; `option_name` is
  * the immutable WordPress locator.
  */
-final class OptionBuilder
+final class OptionBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 
@@ -77,10 +79,10 @@ final class OptionBuilder
      * See: https://developer.wordpress.org/reference/functions/update_option/
      * See: https://developer.wordpress.org/reference/functions/add_option/
      *
-     * @return void
+     * @return OptionRef
      * @throws RuntimeException If required WordPress option functions are unavailable.
      */
-    public function save(): void
+    public function save(): OptionRef
     {
         $intent = $this->ownershipIntent();
 
@@ -128,7 +130,7 @@ final class OptionBuilder
                 $this->recordOwnership($this->context, $intent, 'option', 0, 'option', $this->key);
             }
 
-            return;
+            return new OptionRef($this->key);
         }
 
         if ($operation === OperationAction::Keep) {
@@ -137,7 +139,7 @@ final class OptionBuilder
                 $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
             }
 
-            return;
+            return new OptionRef($this->key);
         }
 
         if (!function_exists('update_option') && !function_exists('add_option')) {
@@ -152,7 +154,7 @@ final class OptionBuilder
             }
             $this->context->logger()->debug(sprintf('Option updated [%s].', $this->key));
 
-            return;
+            return new OptionRef($this->key);
         }
 
         add_option($this->key, $this->value, '', $this->autoload ? 'yes' : 'no');
@@ -161,5 +163,7 @@ final class OptionBuilder
             $this->reportOwnership($this->context, $intent, $operation, 'option', 0, $this->key);
         }
         $this->context->logger()->debug(sprintf('Option inserted [%s].', $this->key));
+
+        return new OptionRef($this->key);
     }
 }

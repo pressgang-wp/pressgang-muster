@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
@@ -18,7 +19,7 @@ use PressGang\Muster\Results\OperationAction;
  * fields set on this builder are updated; omitted fields retain their current
  * WordPress values. Calling a setter with an empty value explicitly clears it.
  */
-final class PostBuilder
+final class PostBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 

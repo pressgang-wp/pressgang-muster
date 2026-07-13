@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
@@ -22,7 +23,7 @@ use PressGang\Muster\Support\WpResult;
  * Muster-scoped builders use an explicit logical key. The WordPress locator is
  * `attachment + post_name` (slug), which may change without replacing the file.
  */
-final class AttachmentBuilder
+final class AttachmentBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 

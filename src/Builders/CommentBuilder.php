@@ -3,6 +3,7 @@
 namespace PressGang\Muster\Builders;
 
 use LogicException;
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Ownership\HasOwnership;
 use PressGang\Muster\Ownership\OwnedResource;
@@ -19,7 +20,7 @@ use RuntimeException;
  * uses a WordPress-native locator composed from post, parent, comment type,
  * author identity, and deterministic GMT date; content remains mutable.
  */
-final class CommentBuilder
+final class CommentBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 

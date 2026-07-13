@@ -2,7 +2,7 @@
 
 namespace PressGang\Muster\Patterns;
 
-use PressGang\Muster\Builders\PostBuilder;
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use PressGang\Muster\Muster;
 use UnexpectedValueException;
 
@@ -13,14 +13,14 @@ final class PatternRunner
 {
     /**
      * @param Pattern $pattern
-     * @param callable(int): PostBuilder $builder
+     * @param callable(int): PersistableDeclaration $builder
      * @param Muster $muster
      * @return void
      *
      * Each run receives a fresh seeded Victuals instance scoped to the Muster lifecycle
      * for this pattern execution only.
      *
-     * @throws UnexpectedValueException If the callable does not return a PostBuilder.
+     * @throws UnexpectedValueException If the callable does not return a persistable declaration.
      */
     public function run(Pattern $pattern, callable $builder, Muster $muster): void
     {
@@ -40,8 +40,13 @@ final class PatternRunner
             for ($i = 1; $i <= $iterations; $i++) {
                 $result = $builder($i);
 
-                if (!$result instanceof PostBuilder) {
-                    throw new UnexpectedValueException('Pattern builder must return PostBuilder for this slice.');
+                if (!$result instanceof PersistableDeclaration) {
+                    throw new UnexpectedValueException(sprintf(
+                        'Pattern [%s] iteration %d must return PersistableDeclaration; received [%s].',
+                        $pattern->name(),
+                        $i,
+                        get_debug_type($result)
+                    ));
                 }
 
                 $result->save();

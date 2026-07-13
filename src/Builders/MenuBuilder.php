@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
@@ -21,7 +22,7 @@ use PressGang\Muster\Support\WpResult;
  *
  * Nesting: pass `parent:` with the title of a *previously declared* item.
  */
-final class MenuBuilder
+final class MenuBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 

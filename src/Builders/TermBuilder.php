@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Builders;
 
+use PressGang\Muster\Contracts\PersistableDeclaration;
 use LogicException;
 use RuntimeException;
 use PressGang\Muster\MusterContext;
@@ -17,7 +18,7 @@ use PressGang\Muster\Results\OperationAction;
  * WordPress locator and may change for an already owned term. Existing terms
  * retain values for fields not set on this builder; an empty value clears it.
  */
-final class TermBuilder
+final class TermBuilder implements PersistableDeclaration
 {
     use HasOwnership;
 
