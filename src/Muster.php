@@ -18,6 +18,7 @@ use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\Builders\TruncateBuilder;
 use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Patterns\Pattern;
+use PressGang\Muster\Patterns\Definition;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Victuals\Victuals;
 
@@ -312,6 +313,23 @@ abstract class Muster
         $this->context->assertDeclarationAllowed('Pattern');
 
         return new Pattern($name, $this->context, $this);
+    }
+
+    /**
+     * Define a reusable explicit resource declaration.
+     *
+     * Definitions and their states only configure builders. They do not write
+     * until consumed by a Pattern or saved directly by the caller.
+     *
+     * @param string $name
+     * @param callable(int): \PressGang\Muster\Contracts\PersistableDeclaration $factory
+     * @return Definition
+     */
+    public function definition(string $name, callable $factory): Definition
+    {
+        $this->context->assertDeclarationAllowed('Definition');
+
+        return new Definition($name, $factory);
     }
 
     /**

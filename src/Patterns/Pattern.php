@@ -79,6 +79,17 @@ final class Pattern
     }
 
     /**
+     * Run this Pattern from a reusable explicit Definition.
+     *
+     * @param Definition $definition
+     * @return PatternResult
+     */
+    public function using(Definition $definition): PatternResult
+    {
+        return $this->build(fn (int $iteration) => $definition->make($iteration));
+    }
+
+    /**
      * @return string
      */
     public function name(): string
