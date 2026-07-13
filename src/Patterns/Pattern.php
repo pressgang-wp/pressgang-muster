@@ -17,6 +17,11 @@ final class Pattern
 
     private ?int $seed = null;
 
+    /**
+     * @var array<string, callable(object, int): mixed>
+     */
+    private array $afterHooks = [];
+
     public function __construct(
         private string $name,
         private MusterContext $context,
@@ -49,6 +54,33 @@ final class Pattern
     public function seed(int $seed): self
     {
         $this->seed = $seed;
+
+        return $this;
+    }
+
+    /**
+     * Declare related resources after each primary declaration is saved.
+     *
+     * The hook runs in both plan and apply and must return a persistable
+     * declaration, an iterable of declarations, or null. Returned builders are
+     * saved by the Pattern runner and therefore produce inspectable operations.
+     * The callback itself must not perform writes.
+     *
+     * @param string $name Stable diagnostic name, unique within this Pattern.
+     * @param callable(object, int): mixed $hook Receives the primary ref and one-based index.
+     * @return self
+     */
+    public function after(string $name, callable $hook): self
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new LogicException('Pattern after-hook name must not be empty.');
+        }
+        if (array_key_exists($name, $this->afterHooks)) {
+            throw new LogicException(sprintf('Pattern [%s] after-hook [%s] is already registered.', $this->name, $name));
+        }
+
+        $this->afterHooks[$name] = $hook;
 
         return $this;
     }
@@ -119,5 +151,13 @@ final class Pattern
     public function context(): MusterContext
     {
         return $this->context;
+    }
+
+    /**
+     * @return array<string, callable(object, int): mixed>
+     */
+    public function afterHooks(): array
+    {
+        return $this->afterHooks;
     }
 }
