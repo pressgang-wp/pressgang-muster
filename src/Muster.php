@@ -19,6 +19,7 @@ use PressGang\Muster\Builders\TruncateBuilder;
 use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Patterns\Pattern;
 use PressGang\Muster\Patterns\Definition;
+use PressGang\Muster\Patterns\Sequence;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Victuals\Victuals;
 
@@ -330,6 +331,19 @@ abstract class Muster
         $this->context->assertDeclarationAllowed('Definition');
 
         return new Definition($name, $factory);
+    }
+
+    /**
+     * Create an immutable cycling value sequence for Pattern iterations.
+     *
+     * @param mixed ...$values
+     * @return Sequence
+     */
+    public function sequence(mixed ...$values): Sequence
+    {
+        $this->context->assertDeclarationAllowed('Sequence');
+
+        return new Sequence(...$values);
     }
 
     /**
