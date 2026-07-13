@@ -4,8 +4,8 @@
 
 Muster is a WordPress-native orchestrator for deterministic content
 provisioning and development fixtures. Ownership-aware reconciliation and the
-read-only plan/apply lifecycle and named declaration groups are implemented; a
-deterministic clock is the next major stability work.
+read-only plan/apply lifecycle, named declaration groups, and a deterministic
+fixture clock are implemented; real WordPress integration coverage is next.
 
 ### Implemented
 
@@ -21,6 +21,7 @@ deterministic clock is the next major stability work.
 - **Ownership contract** — required logical keys, explicit adoption, collision detection, and owned-only reset/prune
 - **Reconciliation reports** — plan/apply passes with create/update/keep/prune/conflict operations and JSON output
 - **Named groups** — explicit callback boundaries that make partial `--only` runs complete and side-effect free outside the selection
+- **Fixture clock** — scenario or CLI epoch shared by plan/apply and relative Victuals date helpers
 - **Test suite** — WordPress API stubs and deterministic Faker coverage
 
 ---
@@ -39,7 +40,7 @@ deterministic clock is the next major stability work.
 - [x] **Plan/apply lifecycle** — inspect first, then report/create/update/keep/prune/conflict
 - [x] **Structured result output** — operation summaries and `--format=json`
 - [x] **Named groups** — make `--only` select every declaration in a scenario, not just Patterns
-- [ ] **Deterministic clock** — separate the fixture epoch from Faker's random seed
+- [x] **Deterministic clock** — separate the fixture epoch from Faker's random seed
 - [ ] **WordPress integration suite** — verify core API behaviour against a real WordPress runtime
 
 #### New Builders

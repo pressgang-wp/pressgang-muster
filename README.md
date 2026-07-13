@@ -57,6 +57,7 @@ Full ecosystem documentation is available in the
 
 - `Muster`: orchestration entrypoint where your seed flow lives.
 - `Victuals`: curated Faker wrapper with UK-leaning defaults.
+- `FixtureClock`: immutable epoch used to resolve relative fixture dates.
 - `Pattern`: repeatable batch runner with `count()` and optional per-pattern seed.
 - `Group`: explicit callback boundary selected by `--only`; skipped callbacks are
   not evaluated.
@@ -127,6 +128,11 @@ use PressGang\Muster\Muster;
 
 final class DemoMuster extends Muster
 {
+    public static function defaultEpoch(): string
+    {
+        return '2026-01-01 09:00:00+00:00';
+    }
+
     public function run(): void
     {
         $this->group('pages', function (): void {
@@ -204,25 +210,37 @@ keys and are owned by the calling Muster.
 
 ## Determinism
 
-Use an explicit shared seed to make generated content repeatable between local and CI runs.
+Randomness and time are separate inputs. Use a seed for repeatable generated
+values and an epoch for repeatable relative dates:
 
 - Conventional theme seed: `wp capstan seed --seed=1234`
 - Low-level named runner: `wp capstan muster <muster-class> --seed=1234`
 - Pattern-level override: `->seed(9876)`
+- One-off clock override: `wp capstan seed --epoch="2026-01-01 09:00:00+00:00"`
+- Scenario default: override `public static function defaultEpoch()` on the Muster.
 
-The same seed and inputs produce the same seed-controlled Faker sequence. Date
-helpers that use relative boundaries still depend on the current clock; a
-separate deterministic fixture epoch is planned.
+`$this->epoch()` returns the reference instant and `$this->at('+1 week')`
+resolves from it. Victuals `date()`, `datetime()`, and `dateBetween()` use the
+same clock, so `dateBetween('+1 week', '+6 months')` no longer consults the
+machine clock. An explicit CLI epoch overrides the scenario default. If neither
+is supplied, Muster captures the system clock once and shares it across plan and
+apply; that keeps one invocation coherent but intentionally does not make
+separate invocations repeatable.
+
+The same seed, epoch, call order, locale, and inputs produce the same generated
+sequence. Calls through `victuals()->raw()` are outside this clock contract.
 
 ## WP-CLI Usage
 
 ```bash
 wp capstan seed --seed=1234
+wp capstan seed --epoch="2026-01-01 09:00:00+00:00"
 wp capstan seed --dry-run
 wp capstan seed --fresh --seed=1234
 wp capstan seed --dry-run --format=json
 
 wp capstan muster App\\Muster\\DemoMuster --seed=1234
+wp capstan muster App\\Muster\\DemoMuster --epoch="2026-01-01 09:00:00+00:00"
 wp capstan muster App\\Muster\\DemoMuster --dry-run
 wp capstan muster App\\Muster\\DemoMuster --only=events
 wp capstan muster App\\Muster\\DemoMuster --format=json
@@ -230,6 +248,8 @@ wp capstan muster App\\Muster\\DemoMuster --format=json
 
 Flags:
 - `--seed=<int>` sets global seed.
+- `--epoch=<datetime>` pins the fixture clock with an absolute ISO-style date
+  or datetime; it overrides `defaultEpoch()`.
 - `--dry-run` performs the complete read-only plan and skips application.
 - `--format=json` emits one structured payload containing plan/apply operations
   and summaries, with no human log lines.

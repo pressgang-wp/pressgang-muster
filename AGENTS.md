@@ -43,6 +43,8 @@ If something is surprising, it is probably wrong.
   as one unit through `--only`.
 - **Victuals**
   Curated wrapper around Faker that provides WordPress-shaped, locale-aware, deterministic fake data.
+- **FixtureClock**
+  Immutable reference epoch for relative dates, independent of Faker's seed.
 - **Patterns**
   Repeatable specifications for generating multiple similar WordPress resources.
 - **Builders**
@@ -106,6 +108,9 @@ Rules:
 
 - Faker randomness is wrapped by Victuals.
 - Seeds control random output, not execution order or persistence rules.
+- The fixture epoch controls relative dates, not randomness.
+- Muster `defaultEpoch()` is overridden by an explicit context clock or CLI
+  `--epoch`; without either, one system instant is shared across plan/apply.
 - Seed precedence:
   1. Pattern seed
   2. Per-pattern context override (programmatic)
@@ -113,6 +118,7 @@ Rules:
   4. No seed, which means non-deterministic output
 
 Each Pattern run receives its own Victuals instance.
+Every Victuals instance in one run receives the same FixtureClock.
 
 ---
 
