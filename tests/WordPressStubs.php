@@ -732,6 +732,114 @@ namespace {
             return true;
         }
     }
+
+    if (!function_exists('get_gmt_from_date')) {
+        function get_gmt_from_date(string $date): string
+        {
+            return $date;
+        }
+    }
+
+    if (!function_exists('get_comment')) {
+        function get_comment(int $commentId): object|null
+        {
+            $row = $GLOBALS['__muster_wp_comments'][$commentId] ?? null;
+
+            return is_array($row) ? (object) $row : null;
+        }
+    }
+
+    if (!function_exists('get_comments')) {
+        /**
+         * @param array<string, mixed> $args
+         * @return array<int, object>
+         */
+        function get_comments(array $args = []): array
+        {
+            $comments = [];
+
+            foreach ($GLOBALS['__muster_wp_comments'] ?? [] as $row) {
+                if (isset($args['post_id']) && (int) $row['comment_post_ID'] !== (int) $args['post_id']) {
+                    continue;
+                }
+                if (isset($args['parent']) && (int) $row['comment_parent'] !== (int) $args['parent']) {
+                    continue;
+                }
+
+                $comments[] = (object) $row;
+            }
+
+            return $comments;
+        }
+    }
+
+    if (!function_exists('wp_insert_comment')) {
+        /**
+         * @param array<string, mixed> $attrs
+         */
+        function wp_insert_comment(array $attrs): int
+        {
+            $id = (int) ($GLOBALS['__muster_wp_next_comment_id'] ?? 1);
+            $GLOBALS['__muster_wp_next_comment_id'] = $id + 1;
+            $GLOBALS['__muster_wp_comments'][$id] = array_merge([
+                'comment_ID' => $id,
+                'comment_post_ID' => 0,
+                'comment_author' => '',
+                'comment_author_email' => '',
+                'comment_author_url' => '',
+                'comment_content' => '',
+                'comment_type' => 'comment',
+                'comment_parent' => 0,
+                'user_id' => 0,
+                'comment_approved' => '1',
+                'comment_date' => '',
+                'comment_date_gmt' => '',
+            ], $attrs, ['comment_ID' => $id]);
+
+            return $id;
+        }
+    }
+
+    if (!function_exists('wp_update_comment')) {
+        /**
+         * @param array<string, mixed> $attrs
+         */
+        function wp_update_comment(array $attrs, bool $wpError = false): int|WP_Error
+        {
+            unset($wpError);
+            $GLOBALS['__muster_wp_update_comment_calls']++;
+            $id = (int) ($attrs['comment_ID'] ?? 0);
+            if (!isset($GLOBALS['__muster_wp_comments'][$id])) {
+                return new WP_Error('missing-comment');
+            }
+
+            $GLOBALS['__muster_wp_comments'][$id] = array_merge(
+                $GLOBALS['__muster_wp_comments'][$id],
+                $attrs
+            );
+
+            return 1;
+        }
+    }
+
+    if (!function_exists('update_comment_meta')) {
+        function update_comment_meta(int $commentId, string $key, mixed $value): bool
+        {
+            $GLOBALS['__muster_wp_comment_meta'][$commentId][$key] = $value;
+
+            return true;
+        }
+    }
+
+    if (!function_exists('wp_delete_comment')) {
+        function wp_delete_comment(int $commentId, bool $forceDelete = false): bool
+        {
+            unset($forceDelete);
+            unset($GLOBALS['__muster_wp_comments'][$commentId]);
+
+            return true;
+        }
+    }
 }
 
 namespace PressGang\Muster\Tests {
@@ -752,6 +860,11 @@ namespace PressGang\Muster\Tests {
         $GLOBALS['__muster_wp_users'] = [];
         $GLOBALS['__muster_wp_user_meta'] = [];
         $GLOBALS['__muster_wp_next_user_id'] = 1;
+
+        $GLOBALS['__muster_wp_comments'] = [];
+        $GLOBALS['__muster_wp_comment_meta'] = [];
+        $GLOBALS['__muster_wp_next_comment_id'] = 1;
+        $GLOBALS['__muster_wp_update_comment_calls'] = 0;
 
         $GLOBALS['__muster_wp_options'] = [];
         $GLOBALS['__muster_registered_post_types'] = ['post', 'page', 'event'];

@@ -10,6 +10,7 @@ use PressGang\Muster\Acf\AcfValueGenerator;
 use PressGang\Muster\Acf\ContextProviders;
 use PressGang\Muster\Acf\ThemeAcf;
 use PressGang\Muster\Builders\AttachmentBuilder;
+use PressGang\Muster\Builders\CommentBuilder;
 use PressGang\Muster\Builders\MenuBuilder;
 use PressGang\Muster\Builders\OptionBuilder;
 use PressGang\Muster\Builders\PostBuilder;
@@ -17,6 +18,7 @@ use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\Builders\TruncateBuilder;
 use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Patterns\Pattern;
+use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Victuals\Victuals;
 
 /**
@@ -170,6 +172,19 @@ abstract class Muster
         $this->context->assertDeclarationAllowed('Attachment builder');
 
         return new AttachmentBuilder($this->context, $slug, static::class);
+    }
+
+    /**
+     * Start a comment or threaded-reply builder for a saved post.
+     *
+     * @param int|PostRef $post
+     * @return CommentBuilder
+     */
+    public function comment(int|PostRef $post): CommentBuilder
+    {
+        $this->context->assertDeclarationAllowed('Comment builder');
+
+        return new CommentBuilder($this->context, $post, static::class);
     }
 
     /**

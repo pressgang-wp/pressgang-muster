@@ -317,6 +317,9 @@ final class OwnershipRegistry
             'menu' => function_exists('wp_delete_nav_menu')
                 ? wp_delete_nav_menu($resource->id())
                 : throw new RuntimeException('wp_delete_nav_menu() is required to reset owned menus.'),
+            'comment' => function_exists('wp_delete_comment')
+                ? wp_delete_comment($resource->id(), true)
+                : throw new RuntimeException('wp_delete_comment() is required to reset owned comments.'),
             default => throw new RuntimeException(sprintf('Cannot delete unknown owned resource type [%s].', $resource->type())),
         };
 
@@ -344,6 +347,9 @@ final class OwnershipRegistry
                 : true,
             'menu' => function_exists('wp_get_nav_menu_object')
                 ? wp_get_nav_menu_object($resource->id()) !== false
+                : true,
+            'comment' => function_exists('get_comment')
+                ? get_comment($resource->id()) !== null
                 : true,
             default => true,
         };

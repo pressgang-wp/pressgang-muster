@@ -35,13 +35,22 @@ final class CoreResourceScenario extends Muster
                 ->role('editor')
                 ->save();
 
-            $this->post('muster_event')
+            $post = $this->post('muster_event')
                 ->key('event:launch')
                 ->title('Launch event')
                 ->slug('launch-event')
                 ->status('publish')
                 ->date($this->at('+1 week')->format('Y-m-d H:i:s'))
                 ->meta(['muster_code' => 'launch'])
+                ->save();
+
+            $this->comment($post)
+                ->key('comment:launch-review')
+                ->author('Integration Reviewer')
+                ->email('reviewer@muster.test')
+                ->date($this->at('+1 week +1 hour')->format('Y-m-d H:i:s'))
+                ->content('A real WordPress comment fixture.')
+                ->status('approve')
                 ->save();
 
             $this->option('muster_fixture')
@@ -129,6 +138,7 @@ final class ReconciliationIntegrationTest extends \WP_UnitTestCase
         self::assertSame('2026-01-08 09:00:00', $post->post_date);
         self::assertSame('launch', get_post_meta($postId, 'muster_code', true));
         self::assertSame(['ready' => true], get_option('muster_fixture'));
+        self::assertSame(1, get_comments(['post_id' => $postId, 'count' => true]));
         self::assertNotFalse(get_option('pressgang_muster_registry', false));
     }
 
@@ -142,7 +152,7 @@ final class ReconciliationIntegrationTest extends \WP_UnitTestCase
         self::assertFalse(get_user_by('login', 'muster_editor'));
         self::assertFalse(get_option('muster_fixture', false));
         self::assertFalse(get_option('pressgang_muster_registry', false));
-        self::assertSame(4, $context->report()->summary()['create']);
+        self::assertSame(5, $context->report()->summary()['create']);
     }
 
     public function test_prune_removes_only_stale_owned_resources(): void
