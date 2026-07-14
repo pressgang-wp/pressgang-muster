@@ -6,133 +6,71 @@
 [![Total Downloads](https://poser.pugx.org/pressgang-wp/muster/downloads)](https://packagist.org/packages/pressgang-wp/muster)
 [![License](https://poser.pugx.org/pressgang-wp/muster/license)](https://packagist.org/packages/pressgang-wp/muster)
 
-**Muster** is a WordPress-native API for deterministic content provisioning and development fixtures.
+**Describe the content your WordPress site needs. Run it as often as you like. Get the same site every time.**
 
-It keeps WordPress semantics explicit, persists through core APIs, and gives a
-theme one conventional place to orchestrate repeatable data creation.
+Muster turns development and test content into code you can review, re-run, and
+trust — without an ORM, without a database dump, and without ever wondering what
+a seed script is about to overwrite.
 
-Muster is part of the [PressGang ecosystem](https://pressgang.dev/) but remains
-WordPress-native: builders write through core WordPress APIs rather than an ORM
-or direct table mapping.
+## The problem
 
-## Installation
+Every WordPress project needs realistic content to build against, and the usual
+options all bite:
 
-Muster is available on [Packagist](https://packagist.org/packages/pressgang-wp/muster):
+- **A database dump** goes stale the moment it lands, can't be reviewed in a pull
+  request, and slowly drifts away from the code it exists to support.
+- **An ad-hoc seed script** works once. Run it twice and you have duplicate
+  pages — or it deletes something it didn't create.
+- **Unseeded fake content** changes on every run, so a visual regression or a CI
+  failure can't be reproduced or bisected.
+
+Muster fixes all three: fixture content becomes a declarative, deterministic,
+re-runnable part of your codebase.
+
+## Why Muster
+
+**Re-run it forever, safely.** Every resource carries a stable logical key, so a
+second run updates the page it made the first time instead of creating another
+one. Rename a slug or retitle a post and it still resolves — WordPress locators
+stay the native lookup layer, but identity doesn't depend on them.
+
+**Same seed, same site.** Randomness and time are explicit inputs, not ambient
+state. `--seed=1234` fixes generated values; an epoch fixes every relative date.
+Two machines, two months apart, produce byte-identical content — which is what
+makes visual regression testing and reproducible bug reports possible.
+
+**See it before it happens.** Every run plans first and shows you exactly what it
+will create, update, keep, or delete. `--dry-run` stops there. Any conflict stops
+the write entirely, so a surprise is a report rather than a support ticket.
+
+**It only touches what it made.** Muster records what it owns. `resetOwned()` and
+`pruneOwned()` delete only that — never the client's real pages sitting in the
+same database. Claiming pre-existing content takes a deliberate `->adopt()`, and
+adoption can never steal a resource owned by someone else.
+
+**WordPress-native, not an ORM.** Builders write through core APIs, so hooks
+fire, caches invalidate, and ACF, menus, and attachments behave exactly as they
+do in wp-admin. Nothing maps your posts to a foreign object model.
+
+**Fixtures live in code review.** A colleague can read the diff of your content
+in a PR — which is not a sentence anyone has said about a `.sql` file.
+
+## Install
 
 ```bash
 composer require --dev pressgang-wp/muster
 ```
 
-Installing as a development dependency is recommended for local setup, CI, and
-disposable test environments. If a controlled non-production runtime must run
-Muster after a `--no-dev` deployment, install it as a regular dependency instead.
+Requires PHP 8.3+, WordPress loaded when resources persist, and WP-CLI for the
+commands below. FakerPHP comes along automatically.
 
-Requirements:
+Install as a dev dependency for local work, CI, and disposable environments. If a
+controlled non-production runtime must seed after a `--no-dev` deploy, make it a
+regular dependency instead.
 
-- PHP 8.3+
-- WordPress loaded when resources are persisted
-- WP-CLI for `wp capstan seed` and `wp capstan muster`
-- FakerPHP 1.24+ (installed automatically)
+## Quick start
 
-## What Muster Provides
-
-- WordPress-native builders for posts, pages, terms, users, options, comments, menus, and attachments.
-- Stable logical keys and Muster-scoped ownership independent of mutable slugs.
-- Collision-safe adoption plus owned-only reset and pruning.
-- Read-only planning followed by revalidated application with operation summaries.
-- Machine-readable reconciliation output through `--format=json`.
-- Named declaration groups for safe, complete `--only` runs.
-- Merge-safe post, term, and user updates that preserve omitted fields.
-- Seeded fake content through the curated `Victuals` Faker wrapper.
-- Resource-agnostic Patterns with definitions, named states, sequences, and inspectable after-hooks.
-- Immutable save refs plus logical-key lazy refs for explicit relationships.
-- Ordered chaining of focused Muster classes through one shared run context.
-- ACF values derived from the active theme's `acf-json` definitions.
-- Conventional `wp capstan seed` and low-level named Muster commands.
-- Deterministic placeholder media for stable visual fixtures.
-- A separate real-WordPress integration suite for core API and database behavior.
-- WordPress assertion helpers and stable structured-report snapshots.
-
-Full ecosystem documentation is available in the
-[Muster GitBook guide](https://docs.pressgang.dev/ecosystem/muster).
-
-## Mental Model
-
-- `Muster`: orchestration entrypoint where your seed flow lives.
-- `Victuals`: curated Faker wrapper with UK-leaning defaults.
-- `FixtureClock`: immutable epoch used to resolve relative fixture dates.
-- `Pattern`: repeatable resource-agnostic batch runner with `count()` and an optional per-pattern seed.
-- `Definition`, states, and `Sequence`: reusable builder recipes and explicit iteration variants.
-- `Group`: explicit callback boundary selected by `--only`; skipped callbacks are
-  not evaluated.
-- `Builders`: explicit WordPress resource writers. Posts, terms, users, and
-  comments use merge-upsert behavior; menus rebuild their items, attachments
-  are reused by slug, and `truncate()` is an explicitly destructive reset.
-- `RunReport`: ordered `create`, `update`, `keep`, `prune`, and `conflict`
-  operations for one planning or application pass.
-
-The orchestration model is informed by seeders and factories in frameworks such
-as Laravel, but Muster is not a Laravel port and does not introduce Models or an
-ORM over WordPress data.
-
-## Persistence Semantics
-
-Every builder created through a Muster requires an explicit `key()`. The
-concrete Muster class and logical key form stable fixture identity; WordPress
-locators such as `post_type + slug`, `taxonomy + slug`, `user_login`, and
-`option_name` remain the native lookup layer. Post and term slugs can therefore
-change without creating duplicates.
-
-Post, term, user, and comment builders use **merge-upsert** behaviour: only fields
-explicitly set on the builder are updated. Omitted fields retain their existing
-WordPress values; passing an empty value explicitly clears a field.
-
-Comments have no slug, so their collision locator is the target post, parent,
-comment type, author email or name, and deterministic GMT date. Content is not
-part of identity and can change safely. Pin `date()` explicitly or define a
-scenario epoch when the declaration must remain stable across invocations.
-
-New users must declare `->password('initial-password')`. The value is sent only
-to `wp_insert_user()`; reruns never reset an existing user's credentials because
-WordPress stores a one-way hash that cannot be compared with the declaration.
-
-Muster distinguishes this default merge behaviour from two future explicit
-modes: `ensure` (create only) and `replace` (complete declared state). The
-identity and ownership contract is recorded in
-[`docs/adr/0001-resource-identity-ownership-and-persistence.md`](docs/adr/0001-resource-identity-ownership-and-persistence.md).
-
-An existing natural-key match is a conflict unless it is already owned by the
-same Muster key. Use `->adopt()` once to claim deliberately pre-existing data;
-adoption never steals another key's resource. Ownership records live in the
-non-autoloaded `pressgang_muster_registry` option.
-
-## Plan and Apply
-
-Every CLI invocation performs a read-only planning pass first. A normal command
-prints that plan, re-runs the same declarative Muster against current WordPress
-state, and applies the revalidated operations. `--dry-run` stops after planning.
-Any planning conflict prevents the application pass.
-
-Operations are reported as `create`, `update`, `keep`, `prune`, or `conflict`.
-Core post, term, user, and option fields can produce `keep`; declarations with
-ACF/meta/taxonomy side effects and authoritative menus are conservatively
-reported as updates when the resource already exists.
-
-```text
-Plan:
-  CREATE   post       [pages] page:about -> about-us
-  Summary: create=1 update=0 keep=0 prune=0 conflict=0
-Apply:
-  CREATE   post       [pages] page:about -> about-us
-  Summary: create=1 update=0 keep=0 prune=0 conflict=0
-```
-
-The apply pass calls `run()` a second time. Keep Muster classes declarative:
-do not send mail, make remote API calls, or perform unrelated writes inside
-`run()`. Builders remain the persistence boundary. Programmatic callers can
-inspect `$context->report()->operations()`, `summary()`, or `toArray()`.
-
-## Quick Example
+Describe what the site should contain:
 
 ```php
 <?php
@@ -162,23 +100,111 @@ final class DemoMuster extends Muster
             $this->pattern('event-fixtures')
                 ->seed(1201)
                 ->count(5)
-                ->build(function (int $i) {
-                    return $this->post('event')
-                        ->key('event:' . $i)
-                        ->title($this->victuals()->headline())
-                        ->slug('event-' . $i)
-                        ->status('publish');
-                });
+                ->build(fn (int $i) => $this->post('event')
+                    ->key('event:' . $i)
+                    ->title($this->victuals()->headline())
+                    ->slug('event-' . $i)
+                    ->status('publish'));
         });
     }
 }
 ```
 
-## Definitions, States, Sequences, and Hooks
+Run it:
 
-Definitions reuse ordinary builders; they are not Models or attribute maps.
-Named states transform a declaration, while an immutable Sequence derives its
-value from the one-based iteration index:
+```bash
+wp capstan seed --seed=1234
+```
+
+Muster plans, shows you the plan, revalidates it against live WordPress, then
+applies it:
+
+```text
+Plan:
+  CREATE   post       [pages] page:about -> about-us
+  Summary: create=1 update=0 keep=0 prune=0 conflict=0
+Apply:
+  CREATE   post       [pages] page:about -> about-us
+  Summary: create=1 update=0 keep=0 prune=0 conflict=0
+```
+
+Run it again and every line becomes `keep` or `update`. No duplicates, no drift.
+
+## Core concepts
+
+- **`Muster`** — the orchestration entrypoint where your seed flow lives.
+- **`Victuals`** — a curated Faker wrapper with UK-leaning defaults, plus
+  network-free `imageUrl()`, `gutenbergBlocks()`, `richContent()`, and
+  `repeaterRows()`.
+- **`FixtureClock`** — the immutable epoch that resolves every relative date.
+- **`Pattern`** — a repeatable batch runner with `count()` and an optional seed.
+- **`Definition`, states, `Sequence`** — reusable builder recipes and explicit
+  per-iteration variants.
+- **`Group`** — an explicit callback boundary selected by `--only`; a skipped
+  group is never evaluated, so it performs no reads, writes, or random draws.
+- **Builders** — the persistence boundary for posts, pages, terms, users,
+  options, comments, menus, and attachments.
+- **`RunReport`** — the ordered `create`/`update`/`keep`/`prune`/`conflict`
+  operations for one pass, readable programmatically or as `--format=json`.
+
+The model is informed by seeders and factories in frameworks like Laravel, but
+Muster is not a Laravel port and introduces no Models or ORM over WordPress data.
+
+## Determinism
+
+Randomness and time are separate inputs:
+
+```bash
+wp capstan seed --seed=1234
+wp capstan seed --epoch="2026-01-01 09:00:00+00:00"
+```
+
+Or set a scenario default by overriding `defaultEpoch()`, and override per
+pattern with `->seed(9876)`. `$this->epoch()` returns the reference instant and
+`$this->at('+1 week')` resolves from it. Victuals' `date()`, `datetime()`, and
+`dateBetween()` share the same clock, so `dateBetween('+1 week', '+6 months')`
+never consults the machine clock.
+
+The same seed, epoch, call order, locale, and inputs produce the same sequence.
+An explicit CLI epoch beats the scenario default. Supply neither and Muster
+captures the system clock once and shares it across plan and apply — coherent
+within one invocation, intentionally not repeatable across separate ones. Calls
+through `victuals()->raw()` sit outside this contract.
+
+## Persistence and ownership
+
+Every builder created through a Muster requires an explicit `key()`. The Muster
+class plus that key form stable fixture identity, so slugs stay free to change.
+
+Post, term, user, and comment builders **merge-upsert**: only fields you set are
+written. Omitted fields keep their existing WordPress values; an explicitly empty
+value clears the field. (Two further modes, `ensure` and `replace`, are charted —
+see [ADR 0001](docs/adr/0001-resource-identity-ownership-and-persistence.md).)
+
+A natural-key match Muster doesn't own is a **conflict**, not a silent takeover:
+
+```php
+// Deliberately claim an existing unowned page, once.
+$this->page()->key('page:about')->adopt()->title('About us')->slug('about-us')->save();
+
+$this->resetOwned();              // delete only what this Muster owns
+$this->pruneOwned();              // delete owned resources not touched this run
+$this->pruneOwned(['page:seasonal']); // ...but keep this one
+```
+
+Ownership records live in the non-autoloaded `pressgang_muster_registry` option.
+`pruneOwned()` deliberately rejects partial `--only` runs, because declarations
+in skipped groups can't be judged stale; its array means "also keep", not
+"complete manifest". `truncate()` remains available for a broad development
+reset and is *not* used by `--fresh`.
+
+Two things worth knowing up front: new users must declare
+`->password('initial-password')` (it reaches `wp_insert_user()` only — reruns
+never reset credentials, because WordPress stores a one-way hash), and comments
+locate on post, parent, type, author, and deterministic GMT date, so content can
+change safely.
+
+## Patterns, definitions, and references
 
 ```php
 $status = $this->sequence('draft', 'publish');
@@ -188,75 +214,39 @@ $event = $this->definition(
         ->key('event:' . $i)
         ->slug('event-' . $i)
         ->status($status->at($i))
-)->state(
-    'featured',
-    fn ($builder, int $i) => $builder->meta(['featured' => true])
-);
+)->state('featured', fn ($builder, int $i) => $builder->meta(['featured' => true]));
 
 $this->pattern('events')
     ->count(6)
-    ->after('welcome-comment', fn ($post, int $i) =>
-        $this->comment($post)
-            ->key('comment:event:' . $i)
-            ->author('Fixture Editor')
-            ->content('Welcome')
-    )
+    ->after('welcome-comment', fn ($post, int $i) => $this->comment($post)
+        ->key('comment:event:' . $i)
+        ->author('Fixture Editor')
+        ->content('Welcome'))
     ->using($event->with('featured'));
 ```
 
-After-hooks may return a persistable declaration, an iterable of declarations,
-or `null`. Returned builders execute in both plan and apply and therefore appear
-as normal structured operations. The hook callback itself must not write.
+After-hooks may return a declaration, an iterable of declarations, or `null`;
+returned builders run in both plan and apply and appear as normal operations. The
+hook itself must not write.
 
-## Chaining and Logical References
+Reference content that doesn't exist yet, and chain Musters in declared order:
 
 ```php
 $this->call(UserMuster::class, EventMuster::class);
 
-$about = $this->ref('page:about'); // handle can be captured before the page exists
+$about = $this->ref('page:about');   // captured before the page exists
 $menu = $this->menu('Main Menu')->key('menu:main')->postItem($about, 'About');
 
 $this->page()->key('page:about')->title('About')->slug('about')->save();
-$menu->save(); // resolves page:about now
+$menu->save();                        // resolves page:about now
 ```
 
-`call()` runs dependencies in declared order with the same clock, random source,
-ownership registry, groups, and report. Recursive graphs and duplicate calls
-fail loudly. A lazy ref uses the current Muster scope by default; pass another
-Muster class as the second argument for an explicit cross-scenario relationship.
-On a clean first run, save the target declaration before the consuming builder.
+`call()` shares one clock, random source, registry, groups, and report. Recursive
+graphs and duplicate calls fail loudly.
 
-## Ownership and Cleanup
+## ACF-derived fixtures
 
-```php
-// Explicitly claim an existing unowned page on the first managed run.
-$this->page()
-    ->key('page:about')
-    ->adopt()
-    ->title('About us')
-    ->slug('about-us')
-    ->save();
-
-// Delete only resources owned by this concrete Muster class.
-$this->resetOwned();
-
-// At the end of a complete run, delete owned resources not touched this run.
-$this->pruneOwned();
-
-// Optionally preserve a conditional key that was not declared this run.
-$this->pruneOwned(['page:seasonal']);
-```
-
-`pruneOwned()` is deliberately explicit and rejects partial `--only` runs,
-because declarations in skipped groups cannot be treated as stale. Keys saved
-in a complete run—including reserved `acf:*` support keys—are retained
-automatically. The optional array means “also keep,” not “complete manifest.”
-`truncate()` still exists for an intentionally broad development reset, but it
-is not used by `wp capstan seed --fresh`.
-
-## ACF-Derived Fixtures
-
-Muster can generate field values from the active theme's `acf-json` exports:
+Generate field values straight from the active theme's `acf-json` exports:
 
 ```php
 $this->post('event')
@@ -267,118 +257,57 @@ $this->post('event')
     ->save();
 ```
 
-Use `$this->acfFor('event', 'minimal')` for required fields only. The default
-`populated` variant fills every generatable field. Media and relational fields
-need real WordPress IDs, so `acfFor()` may provision deterministic supporting
-attachments, posts, or terms. Those support objects receive reserved `acf:*`
-keys and are owned by the calling Muster.
+The default `populated` variant fills every generatable field; `acfFor('event',
+'minimal')` covers required fields only — the sparsest state an editor can
+legally publish, and where empty-link and missing-image bugs hide. Media and
+relational fields need real IDs, so `acfFor()` may provision deterministic
+supporting attachments, posts, or terms under reserved `acf:*` keys owned by the
+calling Muster.
 
-## Determinism
-
-Randomness and time are separate inputs. Use a seed for repeatable generated
-values and an epoch for repeatable relative dates:
-
-- Conventional theme seed: `wp capstan seed --seed=1234`
-- Low-level named runner: `wp capstan muster <muster-class> --seed=1234`
-- Pattern-level override: `->seed(9876)`
-- One-off clock override: `wp capstan seed --epoch="2026-01-01 09:00:00+00:00"`
-- Scenario default: override `public static function defaultEpoch()` on the Muster.
-
-`$this->epoch()` returns the reference instant and `$this->at('+1 week')`
-resolves from it. Victuals `date()`, `datetime()`, and `dateBetween()` use the
-same clock, so `dateBetween('+1 week', '+6 months')` no longer consults the
-machine clock. An explicit CLI epoch overrides the scenario default. If neither
-is supplied, Muster captures the system clock once and shares it across plan and
-apply; that keeps one invocation coherent but intentionally does not make
-separate invocations repeatable.
-
-The same seed, epoch, call order, locale, and inputs produce the same generated
-sequence. Calls through `victuals()->raw()` are outside this clock contract.
-
-Victuals also provides network-free `imageUrl()`, serialized
-`gutenbergBlocks()`, semantic `richContent()`, and explicit
-`repeaterRows($count, $schema)` helpers. Repeater schema callables receive the
-Victuals instance and one-based row index.
-
-## WP-CLI Usage
+## CLI
 
 ```bash
-wp capstan seed --seed=1234
-wp capstan seed --epoch="2026-01-01 09:00:00+00:00"
-wp capstan seed --dry-run
-wp capstan seed --fresh --seed=1234
-wp capstan seed --dry-run --format=json
-wp capstan seed --verbose
-wp capstan seed --quiet
-
-wp capstan muster App\\Muster\\DemoMuster --seed=1234
-wp capstan muster App\\Muster\\DemoMuster --epoch="2026-01-01 09:00:00+00:00"
-wp capstan muster App\\Muster\\DemoMuster --dry-run
+wp capstan seed --seed=1234                 # conventional theme seed
+wp capstan seed --fresh --seed=1234         # reset owned resources, then seed
+wp capstan seed --dry-run --format=json     # plan only, machine-readable
 wp capstan muster App\\Muster\\DemoMuster --only=events
-wp capstan muster App\\Muster\\DemoMuster --format=json
-wp capstan muster App\\Muster\\DemoMuster --verbose
 ```
 
-Flags:
-- `--seed=<int>` sets global seed.
-- `--epoch=<datetime>` pins the fixture clock with an absolute ISO-style date
-  or datetime; it overrides `defaultEpoch()`.
-- `--dry-run` performs the complete read-only plan and skips application.
-- `--format=json` emits one structured payload containing plan/apply operations
-  and summaries, with no human log lines.
-- `--verbose` exposes declared field names and full operation identity details;
-  field values are never logged.
-- `--quiet` suppresses successful human output; errors remain visible. JSON
-  output is still emitted when explicitly requested.
-- `--only=<csv>` executes only matching declaration group names.
-- `--fresh` is available on `wp capstan seed` and deletes only resources owned
-  by that concrete Muster class before `run()`; no custom `fresh()` method is required.
+| Flag | Effect |
+| --- | --- |
+| `--seed=<int>` | Sets the global seed. |
+| `--epoch=<datetime>` | Pins the fixture clock; overrides `defaultEpoch()`. |
+| `--dry-run` | Full read-only plan, no application pass. |
+| `--only=<csv>` | Runs only the named declaration groups. |
+| `--fresh` | (`seed` only) Deletes resources owned by that Muster, then runs. |
+| `--format=json` | One structured payload of plan/apply operations, no log lines. |
+| `--verbose` | Declared field names and full operation identity — never values. |
+| `--quiet` | Suppresses successful output; errors still surface. |
 
-Use `$this->group('name', function (): void { ... });` around every independently
-selectable section. A skipped callback is never invoked, so direct builders,
-Patterns, Victuals calls, and ACF fixture generation inside it perform no reads,
-writes, or random draws. Group names must be non-empty, unique within a pass,
-and cannot be nested. Unknown `--only` names fail instead of silently doing
-nothing. During a partial run, declarations outside a group, `resetOwned()`,
-and `pruneOwned()` also fail loudly.
+`wp capstan seed` refuses to run when `wp_get_environment_type()` reports
+`production`. Unknown `--only` names fail loudly rather than doing nothing, as do
+`resetOwned()`, `pruneOwned()`, and ungrouped declarations during a partial run.
 
-Without `--only`, ungrouped declarations remain valid. Combining `--fresh` and
-`--only` intentionally clears every resource owned by the Muster and then
-rebuilds only the selected groups.
+Keep `run()` declarative — it executes twice, once to plan and once to apply. Do
+not send mail, call remote APIs, or perform unrelated writes inside it. Builders
+are the persistence boundary; programmatic callers can read
+`$context->report()->operations()`, `summary()`, or `toArray()`.
 
-## Demo Scripts
+## Documentation
 
-Run with WordPress loaded:
+Full ecosystem documentation lives in the
+[Muster GitBook guide](https://docs.pressgang.dev/ecosystem/muster). Muster is
+part of the [PressGang ecosystem](https://pressgang.dev/).
+
+## Testing
 
 ```bash
-wp eval-file bin/demo-muster.php
-wp eval-file bin/demo-muster-extended.php
+composer test:unit        # fast WordPress API stubs — 144 tests
 ```
 
-- `bin/demo-muster.php` covers deterministic post pattern upserts.
-- `bin/demo-muster-extended.php` covers idempotent post, term, user, and option upserts.
-
-## Running Tests
-
-Preferred (online dependencies available):
-
-```bash
-composer install
-vendor/bin/phpunit
-```
-
-Offline fallback in this repo:
-
-```bash
-php bin/run-tests.php
-```
-
-The fallback runner exists to keep the slice testable when Packagist access is unavailable.
-
-The real-WordPress suite is intentionally separate because WordPress 7's test
-harness uses PHPUnit 9 while Muster's unit suite uses PHPUnit 11. Provide a
-disposable MySQL database; the runner downloads matching WordPress core and
-uses its transaction-backed test installation:
+The real-WordPress suite is separate because WordPress 7's harness uses PHPUnit 9
+while the unit suite uses PHPUnit 11. Give it a disposable MySQL database; the
+runner downloads matching core and uses its transaction-backed installation:
 
 ```bash
 export WP_TEST_DB_NAME=muster_test
@@ -388,11 +317,22 @@ export WP_TEST_DB_HOST=127.0.0.1
 bin/run-integration-tests.sh
 ```
 
-GitHub Actions runs both PHP 8.3/8.4 unit jobs and the WordPress 7.0.1
-integration job. Never point the integration configuration at a real site
-database: the WordPress test harness installs and clears prefixed tables.
+> **Never** point the integration config at a real site database — the harness
+> installs and clears prefixed tables.
 
-Integration tests can `use AssertsWordPressFixtures` for posts, terms, users,
-options, and comments. `MusterSnapshot::serialize()` and `assertMatches()`
-produce versioned `RunReport` JSON; volatile WordPress IDs are excluded by
-default and snapshot replacement is only performed by an explicit `write()`.
+GitHub Actions runs PHP 8.3/8.4 unit jobs plus the WordPress 7.0.1 integration
+job. Integration tests can `use AssertsWordPressFixtures` for posts, terms,
+users, options, and comments, while `MusterSnapshot::serialize()` and
+`assertMatches()` produce versioned `RunReport` JSON (volatile IDs excluded by
+default; snapshots only rewritten by an explicit `write()`).
+
+Demo scripts, with WordPress loaded:
+
+```bash
+wp eval-file bin/demo-muster.php            # deterministic post pattern upserts
+wp eval-file bin/demo-muster-extended.php   # post, term, user, option upserts
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
