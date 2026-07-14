@@ -64,6 +64,9 @@ composer require --dev pressgang-wp/muster
 Requires PHP 8.3+, WordPress loaded when resources persist, and WP-CLI for the
 commands below. FakerPHP comes along automatically.
 
+> **Pre-1.0.** Muster is at `0.2.0` and the public API may still change between
+> minor versions. Pin an exact version if that matters to you.
+
 Install as a dev dependency for local work, CI, and disposable environments. If a
 controlled non-production runtime must seed after a `--no-dev` deploy, make it a
 regular dependency instead.
@@ -178,8 +181,9 @@ class plus that key form stable fixture identity, so slugs stay free to change.
 
 Post, term, user, and comment builders **merge-upsert**: only fields you set are
 written. Omitted fields keep their existing WordPress values; an explicitly empty
-value clears the field. (Two further modes, `ensure` and `replace`, are charted —
-see [ADR 0001](docs/adr/0001-resource-identity-ownership-and-persistence.md).)
+value clears the field — a declaration is a partial statement of intent, never a
+complete resource. ([ADR 0001](docs/adr/0001-resource-identity-ownership-and-persistence.md)
+records why.)
 
 A natural-key match Muster doesn't own is a **conflict**, not a silent takeover:
 

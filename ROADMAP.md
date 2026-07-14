@@ -19,7 +19,7 @@ testing utilities all have executable coverage.
 - **Victuals** — seeded Faker wrapper (en_GB) with WordPress-friendly helpers
 - **CLI** — conventional `wp capstan seed`, low-level `wp capstan muster`, production guard, owned `--fresh`, read-only planning, JSON reports, seed and declaration-group filters
 - **ACF adapter interface** — pluggable ACF integration (NullAcfAdapter ships)
-- **Persistence contract** — documented `ensure`, `merge`, and `replace` semantics; merge is the current default
+- **Persistence contract** — merge-upsert semantics: only explicitly supplied fields are written, omitted fields are preserved
 - **Ownership contract** — required logical keys, explicit adoption, collision detection, and owned-only reset/prune
 - **Reconciliation reports** — plan/apply passes with create/update/keep/prune/conflict operations and JSON output
 - **Named groups** — explicit callback boundaries that make partial `--only` runs complete and side-effect free outside the selection
@@ -35,7 +35,7 @@ testing utilities all have executable coverage.
 #### Trustworthy Reconciliation
 
 - [x] **Merge-safe updates** — omitted post, term, and user fields retain their existing values
-- [x] **Persistence ADR** — define ensure/merge/replace and separate logical identity from WordPress locators
+- [x] **Persistence ADR** — record merge semantics and separate logical identity from WordPress locators
 - [x] **Logical keys and ownership** — stable Muster identity independent of mutable slugs
 - [x] **Collision policy** — refuse unowned natural-key matches unless explicitly adopted
 - [x] **Owned reset/prune** — delete only resources owned by the selected Muster scenario

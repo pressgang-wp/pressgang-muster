@@ -5,13 +5,15 @@
 
 ## Context
 
-Dry-run logging previously described authored intent without resolving current
-WordPress state. It could not distinguish creation from update, prove a no-op,
-show owned pruning, or surface collisions in machine-readable form.
+A preview is only useful if it resolves current WordPress state. To be worth
+trusting it must distinguish creation from update, prove a no-op, show owned
+pruning, and surface collisions in machine-readable form. Describing authored
+intent alone cannot do any of those things.
 
-WordPress also prevents a conventional ORM unit-of-work approach: posts, terms,
-users, options, menus, media, and plugin fields use different public APIs, and
-new IDs are needed immediately to wire later relationships.
+WordPress also prevents a conventional ORM unit-of-work approach. Beyond the
+absence of a shared persistence contract (see [ADR 0001](0001-resource-identity-ownership-and-persistence.md)),
+new IDs are needed immediately in order to wire later relationships, so writes
+cannot be deferred to a single commit at the end of a run.
 
 ## Decision
 
@@ -21,12 +23,12 @@ CLI reconciliation uses two deterministic passes:
 2. Unless `--dry-run` was requested or planning found a conflict, an application
    pass re-runs the Muster, re-resolves state, and performs writes.
 
-Both passes produce an ordered `RunReport` containing `create`, `update`,
-`keep`, `prune`, and `conflict` operations. Human output prints both summaries;
+Both passes produce an ordered `RunReport` containing `create`, `update`, `keep`,
+`prune`, and `conflict` operations. Human output prints both summaries;
 `--format=json` emits one payload containing the plan and optional apply report.
 
-The plan is advisory rather than a serialized transaction. The application
-pass revalidates ownership and locators immediately before each write. This is
+The plan is advisory rather than a serialized transaction. The application pass
+revalidates ownership and locators immediately before each write. This is
 important because WordPress has no transaction spanning every supported API.
 
 ## Consequences
@@ -36,7 +38,6 @@ important because WordPress has no transaction spanning every supported API.
   by create without deleting content.
 - Muster `run()` executes twice during a normal CLI application and must remain
   declarative; unrelated I/O and writes do not belong there.
-- Builders remain the persistence boundary and must report their outcome.
-- Core comparable fields may report `keep`; adapter-owned payloads without a
-  read contract are conservatively classified as updates.
+- Core comparable fields may report `keep`; adapter-owned payloads without a read
+  contract are conservatively classified as updates.
 - A conflict aborts the remaining pass and prevents application.
