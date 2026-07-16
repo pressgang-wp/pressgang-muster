@@ -204,6 +204,23 @@ abstract class Muster
     }
 
     /**
+     * Seed a declarative manifest — a plain array describing the common
+     * whole-surface case ("N terms per taxonomy, N of each post type, a page
+     * per template, a menu per location"). The terse default; a hand-written
+     * `run()` remains the escape hatch for anything the array cannot express.
+     *
+     * Call it at the orchestration level (like {@see call()}), not inside a
+     * named group — each manifest section opens its own group. See {@see Manifest}.
+     *
+     * @param array<string, mixed> $manifest
+     * @return void
+     */
+    public function assemble(array $manifest): void
+    {
+        (new Manifest($this))->assemble($manifest);
+    }
+
+    /**
      * A post builder for $postType pre-filled with generated defaults: a
      * headline title, paragraph content, and the ACF values `acfFor()` derives
      * for the type. It is the "populated content" shape in one place, so a
