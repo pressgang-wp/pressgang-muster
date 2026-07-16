@@ -94,6 +94,28 @@ final class Pattern
     }
 
     /**
+     * Give every row a deterministic placeholder featured image.
+     *
+     * Registers the standard `thumbnail` after-hook so a "post with a thumbnail"
+     * needs one call rather than a hand-written attachment block. The attachment
+     * self-keys through the Pattern runner.
+     *
+     * @param int $width
+     * @param int $height
+     * @return self
+     */
+    public function withThumbnail(int $width = 1200, int $height = 800): self
+    {
+        return $this->after(
+            'thumbnail',
+            fn (object $ref, int $i): \PressGang\Muster\Builders\AttachmentBuilder =>
+                $this->muster->attachment(sprintf('%s-thumbnail-%d', $this->name, $i))
+                    ->placeholder($width, $height)
+                    ->featuredOn($ref)
+        );
+    }
+
+    /**
      * Run the pattern callable.
      *
      * This executes the closure exactly `count()` times, in ascending index order.

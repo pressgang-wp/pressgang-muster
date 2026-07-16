@@ -67,6 +67,10 @@ final class PatternRunner
             sprintf('Pattern [%s] iteration %d', $pattern->name(), $iteration)
         );
 
+        // Self-key the row from the pattern name and one-based index — stable and
+        // slug-independent (ADR 0006). An explicit key() in the recipe still wins.
+        $this->applyDefaultKey($result, sprintf('%s:%d', $pattern->name(), $iteration));
+
         $ref = $result->save();
         $this->runAfterHooks($pattern, $ref, $iteration);
         $pattern->context()->logger()->progress($pattern->name(), $iteration, $total);
@@ -81,18 +85,21 @@ final class PatternRunner
             }
 
             if ($result instanceof PersistableDeclaration) {
+                $this->applyDefaultKey($result, sprintf('%s:%s:%d', $pattern->name(), $name, $iteration));
                 $result->save();
                 continue;
             }
 
             if (is_iterable($result)) {
                 foreach ($result as $position => $declaration) {
-                    $this->assertDeclaration($declaration, sprintf(
+                    $declaration = $this->assertDeclaration($declaration, sprintf(
                         'Pattern [%s] after-hook [%s] item [%s]',
                         $pattern->name(),
                         $name,
                         (string) $position
-                    ))->save();
+                    ));
+                    $this->applyDefaultKey($declaration, sprintf('%s:%s:%d:%s', $pattern->name(), $name, $iteration, (string) $position));
+                    $declaration->save();
                 }
 
                 continue;
@@ -104,6 +111,22 @@ final class PatternRunner
                 $name,
                 get_debug_type($result)
             ));
+        }
+    }
+
+    /**
+     * Supply a stable default logical key to a declaration that supports one
+     * (every ownership-scoped builder does; low-level ones without ownership,
+     * such as truncation, simply do not and are skipped). An explicit key wins.
+     *
+     * @param object $declaration
+     * @param string $key
+     * @return void
+     */
+    private function applyDefaultKey(object $declaration, string $key): void
+    {
+        if (method_exists($declaration, 'applyDefaultKey')) {
+            $declaration->applyDefaultKey($key);
         }
     }
 }

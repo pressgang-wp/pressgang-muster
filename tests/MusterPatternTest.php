@@ -118,6 +118,33 @@ final class MusterPatternTest extends TestCase
         $muster->unknownType('Nope');
     }
 
+    public function testPatternRowsSelfKeyWhenNoKeyIsGiven(): void
+    {
+        $muster = $this->makeMuster(new MusterContext(new VictualsFactory(), seed: 100));
+
+        // No ->key() in the recipe: without an auto-key the ownership contract
+        // would throw, so the pattern must supply a stable default (hit:1..3).
+        $muster->pattern('hit')->count(3)->build(
+            fn (int $i): PostBuilder => $muster->post('post')->slug('hit-' . $i)->status('publish')
+        );
+
+        self::assertCount(3, $GLOBALS['__muster_wp_posts']);
+        // All three were recorded as owned via their auto-keys, so reset finds them.
+        self::assertSame(3, $muster->resetOwned());
+    }
+
+    public function testWithThumbnailFeaturesAPlaceholderOnEveryRow(): void
+    {
+        $muster = $this->makeMuster(new MusterContext(new VictualsFactory(), seed: 100));
+
+        $muster->pattern('hit')->count(2)->withThumbnail(8, 8)->build(
+            fn (int $i): PostBuilder => $muster->post('post')->slug('hit-' . $i)->status('publish')
+        );
+
+        // Each of the two rows received a featured image (self-keyed attachment).
+        self::assertCount(2, $GLOBALS['__muster_wp_thumbnails']);
+    }
+
     private function makeMuster(MusterContext $context): Muster
     {
         return new class($context) extends Muster {

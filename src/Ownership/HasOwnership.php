@@ -50,6 +50,23 @@ trait HasOwnership
     }
 
     /**
+     * Assign a logical key only if one was not set explicitly.
+     *
+     * A convenience for orchestrators (e.g. the Pattern runner) that can supply
+     * a stable, slug-independent default key — an explicit {@see key()} always
+     * wins, so authored identity is never overridden.
+     *
+     * @param string $key
+     * @return void
+     */
+    public function applyDefaultKey(string $key): void
+    {
+        if ($this->logicalKey === null) {
+            $this->key($key);
+        }
+    }
+
+    /**
      * Explicitly allow this logical key to claim an existing unowned resource.
      *
      * Adoption never steals a resource already owned by another scope or key.

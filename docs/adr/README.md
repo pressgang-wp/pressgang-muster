@@ -16,6 +16,7 @@ from the source. Behaviour that the code already states plainly does not need on
 | [0003](0003-named-declaration-groups.md) | Named declaration groups | Only a callback boundary can withhold evaluation, rather than merely suppressing effect. |
 | [0004](0004-deterministic-fixture-clock.md) | Deterministic fixture clock | A seed makes randomness repeatable but does not define what "now" means. |
 | [0005](0005-seedable-location-params.md) | Seedable location params and the framework-agnostic boundary | One list of reachable ACF params keeps consumers in sync, and gates Muster against absorbing theme-framework assumptions. |
+| [0006](0006-seeder-authoring-ergonomics.md) | Seeder authoring ergonomics | Cut accidental verbosity in stages while keeping keys stable and determinism/ownership/plan-apply intact. |
 
 Records are immutable once accepted. Supersede a decision with a new record
 rather than rewriting history in an old one.
