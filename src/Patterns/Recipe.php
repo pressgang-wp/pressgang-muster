@@ -2,120 +2,183 @@
 
 namespace PressGang\Muster\Patterns;
 
-use LogicException;
+use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\Contracts\PersistableDeclaration;
+use PressGang\Muster\Muster;
+use PressGang\Muster\Victuals\Victuals;
+use ReflectionClass;
 
 /**
  * A reusable recipe for one WordPress resource shape.
  *
- * A Recipe stores a builder recipe and optional named variations (states). It
- * never persists data itself and does not describe model attributes — the
- * returned declaration remains the sole persistence boundary. It is Muster's
- * reusable-shape layer: a Recipe uses Victuals (the provisions) to produce a
- * resource declaration, with no Model and no ORM (see ADR 0007).
+ * Extend it in your theme's `muster/Recipes/` directory: implement {@see define()}
+ * with the resource's default shape, and add named variations as methods that
+ * return `$this->state(...)`. A Recipe uses Victuals to produce a resource
+ * declaration — no Model and no ORM (see ADR 0007/0008).
+ *
+ * A Recipe is reusable across a seed and a test: seed a batch with
+ * `->count(n)->create()`, or feed it to a Pattern with `Pattern::using($recipe)`.
+ * Variants compose immutably, so `->featured()->count(3)->create()` is safe.
  */
-final class Recipe
+abstract class Recipe
 {
-    use AssertsDeclarations;
-
     /**
-     * @var array<string, callable(PersistableDeclaration, int): PersistableDeclaration>
+     * @var array<int, callable(PersistableDeclaration, int): PersistableDeclaration>
      */
     private array $states = [];
 
-    /**
-     * @var array<int, string>
-     */
-    private array $activeStates = [];
+    private int $count = 1;
+
+    private bool $thumbnail = false;
 
     /**
-     * @param string $name Human-readable recipe name used in diagnostics.
-     * @param callable(int): PersistableDeclaration $recipe
+     * @param Muster $muster The seeding context whose builders the recipe uses.
      */
-    public function __construct(private string $name, private $recipe)
+    public function __construct(protected Muster $muster)
     {
-        $this->name = trim($name);
-        if ($this->name === '') {
-            throw new LogicException('Recipe name must not be empty.');
-        }
     }
 
     /**
-     * Register a named, reusable declaration transformation.
+     * The default shape for one row. Return a builder — usually
+     * `$this->content($type)` with the row's own slug, terms, and overrides.
      *
-     * The callable receives the declaration and one-based iteration index and
-     * must return a persistable declaration. Registration performs no writes.
-     *
-     * @param string $name
-     * @param callable(PersistableDeclaration, int): PersistableDeclaration $transform
-     * @return self
+     * @param int $iteration One-based row index.
+     * @return PersistableDeclaration
      */
-    public function state(string $name, callable $transform): self
+    abstract public function define(int $iteration): PersistableDeclaration;
+
+    /**
+     * The pattern and group name — auto-keys become `<name>:<i>`. Defaults to the
+     * class short name without the `Recipe` suffix, lowercased (`HitRecipe` →
+     * `hit`); override for a different name.
+     *
+     * @return string
+     */
+    protected function name(): string
     {
-        $name = trim($name);
-        if ($name === '') {
-            throw new LogicException('Recipe state name must not be empty.');
-        }
-        if (array_key_exists($name, $this->states)) {
-            throw new LogicException(sprintf('Recipe [%s] state [%s] is already registered.', $this->name, $name));
-        }
+        $short = (new ReflectionClass($this))->getShortName();
 
-        $this->states[$name] = $transform;
-
-        return $this;
+        return strtolower((string) preg_replace('/Recipe$/', '', $short)) ?: strtolower($short);
     }
 
     /**
-     * Return an isolated variant with the named states applied in order.
+     * How many rows `create()` seeds.
      *
-     * Each call replaces the variant's state list rather than accumulating:
-     * chaining `with('a')->with('b')` applies only `b`. Combine states in a
-     * single call — `with('a', 'b')` — to apply both.
-     *
-     * @param string ...$names
-     * @return self
+     * @param int $count
+     * @return static
      */
-    public function with(string ...$names): self
+    public function count(int $count): static
     {
         $variant = clone $this;
-        $variant->activeStates = [];
-
-        foreach ($names as $name) {
-            if (!array_key_exists($name, $this->states)) {
-                throw new LogicException(sprintf('Recipe [%s] has no state [%s].', $this->name, $name));
-            }
-
-            $variant->activeStates[] = $name;
-        }
+        $variant->count = max(1, $count);
 
         return $variant;
     }
 
     /**
-     * Build one declaration without persisting it.
+     * Give every seeded row a deterministic placeholder featured image.
      *
-     * @param int $iteration One-based pattern iteration index.
+     * @return static
+     */
+    public function withThumbnail(): static
+    {
+        $variant = clone $this;
+        $variant->thumbnail = true;
+
+        return $variant;
+    }
+
+    /**
+     * Return a variant with one more transformation applied. States compose in
+     * order; this is what a subclass's named-variation methods call.
+     *
+     * @param callable(PersistableDeclaration, int): PersistableDeclaration $transform
+     * @return static
+     */
+    final protected function state(callable $transform): static
+    {
+        $variant = clone $this;
+        $variant->states[] = $transform;
+
+        return $variant;
+    }
+
+    /**
+     * Build one declaration (the shape plus any active states) without saving.
+     *
+     * @param int $iteration
      * @return PersistableDeclaration
      */
-    public function make(int $iteration): PersistableDeclaration
+    final public function make(int $iteration): PersistableDeclaration
     {
-        $declaration = $this->assertDeclaration(
-            ($this->recipe)($iteration),
-            sprintf('Recipe [%s]', $this->name)
-        );
+        $declaration = $this->define($iteration);
 
-        foreach ($this->activeStates as $state) {
-            $declaration = $this->assertDeclaration(
-                ($this->states[$state])($declaration, $iteration),
-                sprintf('Recipe [%s] state [%s]', $this->name, $state)
-            );
+        foreach ($this->states as $state) {
+            $declaration = $state($declaration, $iteration);
         }
 
         return $declaration;
     }
 
-    public function name(): string
+    /**
+     * Seed `count()` rows through a self-keyed Pattern, in a group named for the
+     * recipe (so `--only=<name>` selects it).
+     *
+     * @return void
+     */
+    public function create(): void
     {
-        return $this->name;
+        $this->muster->group($this->name(), function (): void {
+            $pattern = $this->muster->pattern($this->name())->count($this->count);
+
+            if ($this->thumbnail) {
+                $pattern->withThumbnail();
+            }
+
+            $pattern->using($this);
+        });
+    }
+
+    /**
+     * A post pre-filled with generated content for $type (see {@see Muster::content()}).
+     *
+     * @param string $type
+     * @return PostBuilder
+     */
+    final protected function content(string $type = 'post'): PostBuilder
+    {
+        return $this->muster->content($type);
+    }
+
+    /**
+     * A bare post builder for $type.
+     *
+     * @param string $type
+     * @return PostBuilder
+     */
+    final protected function post(string $type = 'post'): PostBuilder
+    {
+        return $this->muster->post($type);
+    }
+
+    /**
+     * The active seeded value source.
+     *
+     * @return Victuals
+     */
+    final protected function victuals(): Victuals
+    {
+        return $this->muster->victuals();
+    }
+
+    /**
+     * ACF values derived for a target (see {@see Muster::acfFor()}).
+     *
+     * @param string $target
+     * @return array<string, mixed>
+     */
+    final protected function acfFor(string $target): array
+    {
+        return $this->muster->acfFor($target);
     }
 }

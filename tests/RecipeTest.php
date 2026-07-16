@@ -5,11 +5,30 @@ namespace PressGang\Muster\Tests;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Builders\TermBuilder;
-use PressGang\Muster\Contracts\PersistableDeclaration;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
+use PressGang\Muster\Patterns\Recipe;
 use PressGang\Muster\Victuals\VictualsFactory;
-use UnexpectedValueException;
+
+/**
+ * A reusable recipe for one taxonomy term, with a composable named state.
+ */
+final class EventTypeRecipe extends Recipe
+{
+    public function define(int $iteration): TermBuilder
+    {
+        return $this->muster->term('event_type')
+            ->name('Type ' . $iteration)
+            ->slug('type-' . $iteration);
+    }
+
+    public function described(): static
+    {
+        return $this->state(
+            fn (TermBuilder $term, int $i): TermBuilder => $term->description('Description ' . $i)
+        );
+    }
+}
 
 final class RecipeTest extends TestCase
 {
@@ -18,55 +37,44 @@ final class RecipeTest extends TestCase
         reset_wordpress_stub_state();
     }
 
-    public function testRecipeCanBeReusedWithAnIsolatedNamedState(): void
+    public function testCreateSeedsCountSelfKeyedRows(): void
     {
         $muster = $this->muster();
-        $recipe = $muster->recipe(
-            'event-type',
-            fn (int $i): TermBuilder => $muster->term('event_type')
-                ->key('event-type:' . $i)
-                ->name('Type ' . $i)
-                ->slug('type-' . $i)
-        )->state(
-            'described',
-            fn (PersistableDeclaration $term, int $i): PersistableDeclaration => $term->description('Description ' . $i)
-        );
 
-        $muster->pattern('described-types')->count(2)->using($recipe->with('described'));
+        $muster->recipe(EventTypeRecipe::class)->count(3)->create();
+
+        self::assertCount(3, $GLOBALS['__muster_wp_terms']);
+    }
+
+    public function testStatesComposeAndApply(): void
+    {
+        $muster = $this->muster();
+
+        $described = $muster->recipe(EventTypeRecipe::class)->described();
+        $muster->pattern('described-types')->count(2)->using($described);
 
         self::assertSame('Description 1', $GLOBALS['__muster_wp_terms']['event_type::type-1']['description']);
         self::assertSame('Description 2', $GLOBALS['__muster_wp_terms']['event_type::type-2']['description']);
-
-        $plain = $recipe->make(3);
-        self::assertInstanceOf(TermBuilder::class, $plain);
     }
 
-    public function testUnknownStateFailsBeforeThePatternRuns(): void
+    public function testMakeBuildsWithoutPersistingAndWithoutInactiveStates(): void
     {
         $muster = $this->muster();
-        $recipe = $muster->recipe(
-            'event-type',
-            fn (int $i): TermBuilder => $muster->term('event_type')->key('type:' . $i)->name('Type')
-        );
+
+        $plain = $muster->recipe(EventTypeRecipe::class)->make(3);
+
+        self::assertInstanceOf(TermBuilder::class, $plain);
+        self::assertCount(0, $GLOBALS['__muster_wp_terms']);
+    }
+
+    public function testRecipeRejectsNonRecipeClasses(): void
+    {
+        $muster = $this->muster();
 
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessage('has no state [missing]');
+        $this->expectExceptionMessage('expects a');
 
-        $recipe->with('missing');
-    }
-
-    public function testInvalidStateResultFailsLoudly(): void
-    {
-        $muster = $this->muster();
-        $recipe = $muster->recipe(
-            'event-type',
-            fn (int $i): TermBuilder => $muster->term('event_type')->key('type:' . $i)->name('Type')
-        )->state('invalid', fn (PersistableDeclaration $term, int $i): object => new \stdClass());
-
-        $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage('state [invalid] must return PersistableDeclaration');
-
-        $recipe->with('invalid')->make(1);
+        $muster->recipe(\stdClass::class);
     }
 
     private function muster(): Muster

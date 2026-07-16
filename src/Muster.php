@@ -466,21 +466,26 @@ abstract class Muster
     }
 
     /**
-     * A reusable recipe for one resource shape.
+     * Instantiate a reusable Recipe class for this seeding context.
      *
-     * A Recipe and its states only configure builders — a Recipe uses Victuals
-     * to produce a resource declaration, not a Model. It does not write until
-     * consumed by a Pattern or saved directly by the caller.
+     * A Recipe (a `PressGang\Muster\Patterns\Recipe` subclass, by convention in
+     * the theme's `muster/Recipes/`) uses Victuals to produce a resource
+     * declaration — not a Model. It writes nothing until `create()` is called or
+     * a Pattern consumes it. Reusable across a seed and a test.
      *
-     * @param string $name
-     * @param callable(int): \PressGang\Muster\Contracts\PersistableDeclaration $recipe
+     * @param class-string<Recipe> $recipe
      * @return Recipe
+     * @throws LogicException If $recipe is not a Recipe subclass.
      */
-    public function recipe(string $name, callable $recipe): Recipe
+    public function recipe(string $recipe): Recipe
     {
         $this->context->scope()->assertDeclarationAllowed('Recipe');
 
-        return new Recipe($name, $recipe);
+        if (!is_subclass_of($recipe, Recipe::class)) {
+            throw new LogicException(sprintf('Muster::recipe() expects a %s subclass; received [%s].', Recipe::class, $recipe));
+        }
+
+        return new $recipe($this);
     }
 
     /**
