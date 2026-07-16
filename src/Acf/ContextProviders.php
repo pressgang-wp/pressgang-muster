@@ -57,7 +57,18 @@ final class ContextProviders
      */
     private static function attachment(MusterContext $context, string $scope, string $prefix, string $name): int
     {
-        return (new AttachmentBuilder($context, "{$prefix}-" . Slug::sanitize($name), $scope))
+        $slug = "{$prefix}-" . Slug::sanitize($name);
+
+        // A deterministic placeholder shared by every field of this name. If one
+        // already exists — created by an earlier run, even under a different
+        // ownership scope (a site seed, then a test setup against the same DB) —
+        // reuse it rather than re-claim it, which would be an ownership conflict.
+        $existing = self::existingPostId('attachment', $slug);
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return (new AttachmentBuilder($context, $slug, $scope))
             ->key('acf:attachment:' . Slug::sanitize($name))
             ->placeholder(1200, 800)
             ->save()
@@ -77,6 +88,11 @@ final class ContextProviders
     {
         $type = $postTypes[0] ?? 'post';
         $slug = "{$prefix}-related-" . Slug::sanitize($type);
+
+        $existing = self::existingPostId($type, $slug);
+        if ($existing !== null) {
+            return $existing;
+        }
 
         $ref = (new PostBuilder($context, $type, ownershipScope: $scope))
             ->key('acf:post:' . Slug::sanitize($type))
@@ -112,11 +128,62 @@ final class ContextProviders
      */
     private static function term(MusterContext $context, string $scope, string $prefix, string $taxonomy): int
     {
+        $slug = "{$prefix}-term";
+
+        $existing = self::existingTermId($taxonomy, $slug);
+        if ($existing !== null) {
+            return $existing;
+        }
+
         return (new TermBuilder($context, $taxonomy, ownershipScope: $scope))
             ->key('acf:term:' . Slug::sanitize($taxonomy))
             ->name('Fixture term')
-            ->slug("{$prefix}-term")
+            ->slug($slug)
             ->save()
             ->termId();
+    }
+
+    /**
+     * The ID of an existing post/attachment with this slug, or null.
+     *
+     * @param string $postType
+     * @param string $slug
+     * @return int|null
+     */
+    private static function existingPostId(string $postType, string $slug): ?int
+    {
+        if (!function_exists('get_posts')) {
+            return null;
+        }
+
+        $ids = get_posts([
+            'name' => $slug,
+            'post_type' => $postType,
+            'post_status' => 'any',
+            'fields' => 'ids',
+            'posts_per_page' => 1,
+            'suppress_filters' => true,
+            'no_found_rows' => true,
+        ]);
+
+        return $ids ? (int) $ids[0] : null;
+    }
+
+    /**
+     * The ID of an existing term with this slug in $taxonomy, or null.
+     *
+     * @param string $taxonomy
+     * @param string $slug
+     * @return int|null
+     */
+    private static function existingTermId(string $taxonomy, string $slug): ?int
+    {
+        if (!function_exists('get_term_by')) {
+            return null;
+        }
+
+        $term = get_term_by('slug', $slug, $taxonomy);
+
+        return is_object($term) && isset($term->term_id) ? (int) $term->term_id : null;
     }
 }

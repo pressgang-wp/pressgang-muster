@@ -180,6 +180,33 @@ final class ThemeAcfTest extends TestCase
         self::assertSame('A specific title', $GLOBALS['__muster_wp_posts']['event::an-event']['post_title']);
     }
 
+    public function testAcfSupportIsReusedAcrossSeparateMusterScopes(): void
+    {
+        // Two separate musters (a site seed, then a test setup against the same
+        // database) both generate the shared placeholder for the same field. The
+        // second must reuse it, not conflict on ownership.
+        $context = new MusterContext(new VictualsFactory(), seed: 42);
+
+        $seed = new class($context) extends Muster {
+            public function run(): void
+            {
+            }
+        };
+        $setup = new class($context) extends Muster {
+            public function run(): void
+            {
+            }
+        };
+
+        $seed->acfFor('event');
+        $setup->acfFor('event');
+
+        self::assertCount(
+            1,
+            get_posts(['name' => 'seed-hero', 'post_type' => 'attachment', 'post_status' => 'any'])
+        );
+    }
+
     private function contentMuster(): Muster
     {
         return new class(new MusterContext(new VictualsFactory(), seed: 42)) extends Muster {
