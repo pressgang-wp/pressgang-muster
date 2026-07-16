@@ -46,9 +46,20 @@ If something is surprising, it is probably wrong.
 - **FixtureClock**
   Immutable reference epoch for relative dates, independent of Faker's seed.
 - **Patterns**
-  Repeatable specifications for generating multiple similar WordPress resources.
-- **Definitions, States, and Sequences**
-  Reusable explicit builder factories, named builder transformations, and immutable iteration-indexed values.
+  Repeatable specifications for multiple similar resources. Rows self-key from the
+  pattern name and one-based index; `withThumbnail()` adds a placeholder featured
+  image to each.
+- **`content($type)`**
+  A post pre-filled with a generated title, body, and the `acfFor($type)` values —
+  the populated-content shape in one place; opt-in, so bare `post()` is unchanged.
+- **Recipes, States, and Sequences**
+  A reusable resource shape as a **class** (in `muster/Recipes/`, extending
+  `Recipe`) with named-variation methods; named builder transformations; and
+  immutable iteration-indexed values. Not "factories" — a Recipe yields a
+  declaration, not a Model (ADR 0007/0008).
+- **`assemble($manifest)`**
+  A declarative config array for the whole-surface case (terms, posts, pages,
+  menus); the terse default over hand-written builders.
 - **Builders**
   Fluent builders for posts, terms, users, options, comments, attachments, and menus. Builders do the minimum required work to upsert data.
 - **Refs**
@@ -59,6 +70,10 @@ If something is surprising, it is probably wrong.
 ---
 
 ## Canonical Usage Patterns
+
+Musters and Recipes live in the theme's top-level `muster/` directory, mapped
+under composer **`autoload-dev`** — they are development and test fixtures, not
+shipped code. `wp capstan seed` runs `{namespace}\Muster\SiteMuster` by convention.
 
 ### Simple post creation
 
@@ -77,21 +92,52 @@ $this->group('pages', function (): void {
 
 ```php
 $this->group('events', function (): void {
+    // Rows self-key (event:1…event:12); content() fills the title, body and ACF;
+    // the recipe declares only what differs.
     $this->pattern('event')
         ->count(12)
         ->seed(1978)
-        ->build(function (int $i) {
-            return $this->event()
-                ->key("event:{$i}")
-                ->title($this->victuals()->headline())
-                ->slug("event-{$i}")
-                ->meta([
-                    'starts_at' => $this->victuals()
-                        ->dateBetween('+1 week', '+6 months')
-                        ->format('Y-m-d H:i:s'),
-                ]);
-        });
+        ->withThumbnail()
+        ->build(fn (int $i) => $this->content('event')
+            ->slug("event-{$i}")
+            ->meta([
+                'starts_at' => $this->victuals()->dateBetween('+1 week', '+6 months')->format('Y-m-d H:i:s'),
+            ]));
 });
+```
+
+### Reusable Recipe class (muster/Recipes/)
+
+A Recipe is a resource shape reused across a seed and a test — a class extending
+`Recipe`, not a closure.
+
+```php
+final class EventRecipe extends \PressGang\Muster\Patterns\Recipe
+{
+    public function define(int $i): PostBuilder
+    {
+        return $this->content('event')->slug($this->slugFor($i));
+    }
+
+    public function featured(): static
+    {
+        return $this->state(fn (PostBuilder $b, int $i) => $b->meta(['featured' => true]));
+    }
+}
+
+// $this->recipe(EventRecipe::class)->count(6)->withThumbnail()->create();
+// $this->recipe(EventRecipe::class)->named('spotlight')->featured()->count(2)->create();
+```
+
+### Declarative manifest (the whole surface)
+
+```php
+$this->assemble([
+    'terms' => ['topic' => 3],
+    'posts' => ['article' => ['count' => 5, 'thumbnail' => true, 'terms' => ['topic' => 'rotate']]],
+    'pages' => 'templates',
+    'menus' => 'locations',
+]);
 ```
 
 Rules:
@@ -103,7 +149,7 @@ Rules:
 - `count()` is required.
 - `seed()` controls randomness only, not data selection.
 - The closure must return `PersistableDeclaration`.
-- Definition states must return a persistable declaration and never write.
+- Recipe states must return a persistable declaration and never write.
 - After-hooks may return persistable declarations only; the hook itself must not write.
 - Sequences derive values from the one-based iteration index and hold no cursor.
 
@@ -262,8 +308,8 @@ Example:
 /**
  * Defines a repeatable specification for generating multiple similar items.
  *
- * Patterns are the factory analogue in Muster. They control repetition,
- * seeding, and execution order, but do not persist data themselves.
+ * Patterns control repetition, seeding, and execution order, but do not persist
+ * data themselves; a self-keyed row needs no explicit key.
  *
  * @param string $name Human-readable pattern identifier (for debugging/logging).
  * @return \PressGang\Muster\Patterns\Pattern
@@ -311,15 +357,16 @@ Example:
 
 ```php
 /**
- * Execute the pattern using the provided builder factory.
+ * Execute the pattern using the provided builder callable.
  *
- * The callable must return a PersistableDeclaration. The declaration will be
- * persisted automatically by the Pattern runner.
+ * The callable must return a PersistableDeclaration, persisted automatically by
+ * the Pattern runner and self-keyed from the pattern name and index unless it
+ * sets its own key().
  *
- * @param callable(int $i): \PressGang\Muster\Contracts\PersistableDeclaration $factory
+ * @param callable(int $i): \PressGang\Muster\Contracts\PersistableDeclaration $builder
  * @return \PressGang\Muster\Patterns\PatternResult
  */
-public function build(callable $factory): PatternResult
+public function build(callable $builder): PatternResult
 ```
 
 Fail fast if the contract is violated.
