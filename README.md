@@ -64,8 +64,8 @@ composer require --dev pressgang-wp/muster
 Requires PHP 8.3+, WordPress loaded when resources persist, and WP-CLI for the
 commands below. FakerPHP comes along automatically.
 
-> **Pre-1.0.** Muster is at `0.2.0` and the public API may still change between
-> minor versions. Pin an exact version if that matters to you.
+> **Pre-1.0.** The public API may still change between minor versions. Pin an
+> exact version if that matters to you.
 
 Install as a dev dependency for local work, CI, and disposable environments. If a
 controlled non-production runtime must seed after a `--no-dev` deploy, make it a
@@ -73,14 +73,24 @@ regular dependency instead.
 
 ## Quick start
 
+Muster classes live in a top-level `muster/` directory, mapped under your
+composer **`autoload-dev`** — they are development and test fixtures, not shipped
+code:
+
+```json
+"autoload-dev": { "psr-4": { "App\\Muster\\": "muster/" } }
+```
+
 Describe what the site should contain:
 
 ```php
 <?php
 
+namespace App\Muster;
+
 use PressGang\Muster\Muster;
 
-final class DemoMuster extends Muster
+final class SiteMuster extends Muster
 {
     public static function defaultEpoch(): string
     {
@@ -89,26 +99,19 @@ final class DemoMuster extends Muster
 
     public function run(): void
     {
-        $this->group('pages', function (): void {
-            $this->page()
-                ->key('page:about')
-                ->title('About us')
-                ->slug('about-us')
-                ->status('publish')
-                ->content($this->victuals()->paragraphs(3))
-                ->save();
-        });
+        $this->page()
+            ->key('page:about')
+            ->title('About us')
+            ->slug('about-us')
+            ->content($this->victuals()->paragraphs(3))
+            ->save();
 
-        $this->group('events', function (): void {
-            $this->pattern('event-fixtures')
-                ->seed(1201)
-                ->count(5)
-                ->build(fn (int $i) => $this->post('event')
-                    ->key('event:' . $i)
-                    ->title($this->victuals()->headline())
-                    ->slug('event-' . $i)
-                    ->status('publish'));
-        });
+        // Five events. Rows self-key (event:1…event:5); content() fills a
+        // generated title, body, and ACF; status defaults to publish and the
+        // date to the fixture epoch; withThumbnail() adds a placeholder image.
+        $this->pattern('event')->count(5)->withThumbnail()->build(
+            fn (int $i) => $this->content('event')->slug('event-' . $i)
+        );
     }
 }
 ```
@@ -124,14 +127,29 @@ applies it:
 
 ```text
 Plan:
-  CREATE   post       [pages] page:about -> about-us
-  Summary: create=1 update=0 keep=0 prune=0 conflict=0
-Apply:
-  CREATE   post       [pages] page:about -> about-us
-  Summary: create=1 update=0 keep=0 prune=0 conflict=0
+  CREATE   post   page:about -> about-us
+  CREATE   post   event:1 -> event-1
+  ...
+  Summary: create=6 update=0 keep=0 prune=0 conflict=0
 ```
 
 Run it again and every line becomes `keep` or `update`. No duplicates, no drift.
+
+For the common whole-surface case — some terms, N of each post type, a page per
+template, a menu per location — declare a **manifest** instead of writing each
+builder:
+
+```php
+public function run(): void
+{
+    $this->assemble([
+        'terms' => ['topic' => 3],
+        'posts' => ['article' => ['count' => 5, 'thumbnail' => true, 'terms' => ['topic' => 'rotate']]],
+        'pages' => 'templates',
+        'menus' => 'locations',
+    ]);
+}
+```
 
 ## Core concepts
 
@@ -140,9 +158,15 @@ Run it again and every line becomes `keep` or `update`. No duplicates, no drift.
   network-free `imageUrl()`, `gutenbergBlocks()`, `richContent()`, and
   `repeaterRows()`.
 - **`FixtureClock`** — the immutable epoch that resolves every relative date.
-- **`Pattern`** — a repeatable batch runner with `count()` and an optional seed.
-- **`Definition`, states, `Sequence`** — reusable builder recipes and explicit
-  per-iteration variants.
+- **`Pattern`** — a repeatable batch runner: `count()`, an optional seed, and
+  rows that self-key from the pattern name and index. `withThumbnail()` gives
+  each a placeholder featured image.
+- **`content($type)`** — a post pre-filled with a generated title, body, and the
+  ACF values `acfFor($type)` derives: the "populated content" shape in one place.
+- **`assemble($manifest)`** — a declarative config array for the whole-surface
+  case (terms, posts, pages, menus); the terse default over hand-written builders.
+- **`Recipe`, states, `Sequence`** — a reusable resource shape as a class (in
+  `muster/Recipes/`) with named variations, and immutable per-iteration values.
 - **`Group`** — an explicit callback boundary selected by `--only`; a skipped
   group is never evaluated, so it performs no reads, writes, or random draws.
 - **Builders** — the persistence boundary for posts, pages, terms, users,
@@ -176,8 +200,10 @@ through `victuals()->raw()` sit outside this contract.
 
 ## Persistence and ownership
 
-Every builder created through a Muster requires an explicit `key()`. The Muster
-class plus that key form stable fixture identity, so slugs stay free to change.
+Every builder created through a Muster requires a `key()` — the Muster class plus
+that key form stable fixture identity, so slugs stay free to change. Pattern rows
+self-key from the pattern name and one-based index, so a `pattern()` recipe needs
+no explicit key.
 
 Post, term, user, and comment builders **merge-upsert**: only fields you set are
 written. Omitted fields keep their existing WordPress values; an explicitly empty
@@ -208,25 +234,42 @@ never reset credentials, because WordPress stores a one-way hash), and comments
 locate on post, parent, type, author, and deterministic GMT date, so content can
 change safely.
 
-## Patterns, definitions, and references
+## Recipes, patterns, and references
+
+A **Recipe** is a reusable resource shape as a class — the ORM-free equivalent of
+a factory, reusable across a site seed and a test. It lives in `muster/Recipes/`:
+implement `define()` with the shape, and add named variations as methods.
 
 ```php
-$status = $this->sequence('draft', 'publish');
-$event = $this->definition(
-    'event',
-    fn (int $i) => $this->post('event')
-        ->key('event:' . $i)
-        ->slug('event-' . $i)
-        ->status($status->at($i))
-)->state('featured', fn ($builder, int $i) => $builder->meta(['featured' => true]));
+// muster/Recipes/EventRecipe.php
+final class EventRecipe extends \PressGang\Muster\Patterns\Recipe
+{
+    public function define(int $i): PostBuilder
+    {
+        return $this->content('event')->slug($this->slugFor($i));
+    }
 
-$this->pattern('events')
-    ->count(6)
+    public function featured(): static
+    {
+        return $this->state(fn (PostBuilder $b, int $i) => $b->meta(['featured' => true]));
+    }
+}
+```
+
+`count()->create()` seeds a self-keyed batch, states compose immutably, and
+`named()` gives a distinct batch identity so a test scenario can sit alongside the
+site seed without colliding:
+
+```php
+$this->recipe(EventRecipe::class)->count(6)->withThumbnail()->create();
+$this->recipe(EventRecipe::class)->named('spotlight')->featured()->count(2)->create();
+
+// or drive a Pattern directly — e.g. to attach an after-hook, or cycle values
+// with a Sequence ($this->sequence('draft', 'publish')->at($i)):
+$this->pattern('events')->count(6)
     ->after('welcome-comment', fn ($post, int $i) => $this->comment($post)
-        ->key('comment:event:' . $i)
-        ->author('Fixture Editor')
-        ->content('Welcome'))
-    ->using($event->with('featured'));
+        ->key('comment:event:' . $i)->author('Fixture Editor')->content('Welcome'))
+    ->using($this->recipe(EventRecipe::class));
 ```
 
 After-hooks may return a declaration, an iterable of declarations, or `null`;
@@ -265,8 +308,9 @@ The default `populated` variant fills every generatable field; `acfFor('event',
 'minimal')` covers required fields only — the sparsest state an editor can
 legally publish, and where empty-link and missing-image bugs hide. Media and
 relational fields need real IDs, so `acfFor()` may provision deterministic
-supporting attachments, posts, or terms under reserved `acf:*` keys owned by the
-calling Muster.
+supporting attachments, posts, or terms under reserved `acf:*` keys — owned by
+the run's root Muster, and reused (not re-created) by a later run against the same
+database, so a test setup can regenerate the same fields safely.
 
 ## CLI
 
@@ -274,7 +318,7 @@ calling Muster.
 wp capstan seed --seed=1234                 # conventional theme seed
 wp capstan seed --fresh --seed=1234         # reset owned resources, then seed
 wp capstan seed --dry-run --format=json     # plan only, machine-readable
-wp capstan muster App\\Muster\\DemoMuster --only=events
+wp capstan muster App\\Muster\\EventMuster --only=events   # low-level: run a named Muster
 ```
 
 | Flag | Effect |
@@ -306,7 +350,7 @@ part of the [PressGang ecosystem](https://pressgang.dev/).
 ## Testing
 
 ```bash
-composer test:unit        # fast WordPress API stubs — 144 tests
+composer test:unit        # fast WordPress API stubs
 ```
 
 The real-WordPress suite is separate because WordPress 7's harness uses PHPUnit 9
