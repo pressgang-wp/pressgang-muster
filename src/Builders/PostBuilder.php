@@ -352,6 +352,17 @@ final class PostBuilder implements PersistableDeclaration
             $attributes['ID'] = $existingId;
             $saveResult = wp_update_post($attributes, true);
         } else {
+            // Fixture defaults, applied to fresh inserts ONLY — never to the
+            // update path, so merge-upsert still preserves fields the caller
+            // omits on a re-run. A post fixture almost always wants to be
+            // published, and its date must be deterministic (the fixture
+            // epoch, ADR 0004), so neither should need writing out by hand.
+            $attributes += [
+                'post_status' => 'publish',
+                'post_date' => $this->context->clock()->epoch()->format('Y-m-d H:i:s'),
+            ];
+            $attributes['edit_date'] = true;
+
             $saveResult = wp_insert_post($attributes, true);
         }
 

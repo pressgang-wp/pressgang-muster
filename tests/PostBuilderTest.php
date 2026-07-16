@@ -6,6 +6,7 @@ use LogicException;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Builders\PostBuilder;
+use PressGang\Muster\Clock\FixtureClock;
 use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
 
@@ -85,6 +86,47 @@ final class PostBuilderTest extends TestCase
         self::assertSame('Keep this excerpt', $stored['post_excerpt']);
         self::assertSame('publish', $stored['post_status']);
         self::assertSame(7, $stored['post_parent']);
+    }
+
+    public function testInsertDefaultsStatusToPublishAndDateToTheEpoch(): void
+    {
+        $context = new MusterContext(new VictualsFactory(), clock: new FixtureClock('2026-01-01 09:00:00+00:00'));
+
+        (new PostBuilder($context, 'event'))
+            ->title('No status or date')
+            ->slug('defaults')
+            ->save();
+
+        $stored = $GLOBALS['__muster_wp_posts']['event::defaults'];
+        self::assertSame('publish', $stored['post_status']);
+        self::assertSame('2026-01-01 09:00:00', $stored['post_date']);
+    }
+
+    public function testExplicitStatusAndDateOverrideTheInsertDefaults(): void
+    {
+        $context = new MusterContext(new VictualsFactory(), clock: new FixtureClock('2026-01-01 09:00:00+00:00'));
+
+        (new PostBuilder($context, 'event'))
+            ->slug('explicit')
+            ->status('draft')
+            ->date('2020-05-05 12:00:00')
+            ->save();
+
+        $stored = $GLOBALS['__muster_wp_posts']['event::explicit'];
+        self::assertSame('draft', $stored['post_status']);
+        self::assertSame('2020-05-05 12:00:00', $stored['post_date']);
+    }
+
+    public function testInsertDefaultsNeverClobberAnExistingPostOnUpdate(): void
+    {
+        $context = new MusterContext(new VictualsFactory(), clock: new FixtureClock('2026-01-01 09:00:00+00:00'));
+
+        // Created as a draft; a re-run that omits the status must not force it
+        // to publish — the default is an insert-only convenience, not an update.
+        (new PostBuilder($context, 'event'))->slug('kept')->status('draft')->save();
+        (new PostBuilder($context, 'event'))->slug('kept')->title('Updated')->save();
+
+        self::assertSame('draft', $GLOBALS['__muster_wp_posts']['event::kept']['post_status']);
     }
 
     public function testSaveAppliesExtendedFields(): void
