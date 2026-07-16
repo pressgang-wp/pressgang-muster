@@ -1,0 +1,347 @@
+{
+    "package": "pressgang-wp/muster",
+    "version": "0.2.0",
+    "generated_at": "2026-07-16T20:13:15Z",
+    "entrypoint": "PressGang\\Muster\\Muster",
+    "principles": [
+        "WordPress-native: builders write through wp_insert_* \u2014 no ORM, no models",
+        "Deterministic: a seed fixes generated values, an epoch fixes \"now\"",
+        "Idempotent: logical keys make seeding a merge-upsert, not a duplicate",
+        "Own only what you seed: ownership registry scopes teardown"
+    ],
+    "methods": [
+        {
+            "name": "run",
+            "signature": "run(): void",
+            "group": "Orchestration",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Declare this scenario's fixtures by composing builders and patterns."
+        },
+        {
+            "name": "assemble",
+            "signature": "assemble(array $manifest): void",
+            "group": "Orchestration",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Seed a declarative manifest \u2014 a plain array describing the common"
+        },
+        {
+            "name": "group",
+            "signature": "group(string $name, callable $declarations): void",
+            "group": "Orchestration",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Declare a named, independently selectable section of a Muster scenario."
+        },
+        {
+            "name": "call",
+            "signature": "call(string ...$musters): void",
+            "group": "Orchestration",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Run dependent Muster classes in the declared order using this context."
+        },
+        {
+            "name": "content",
+            "signature": "content(string $postType = 'post'): PressGang\\Muster\\Builders\\PostBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "A post builder for $postType pre-filled with generated defaults: a"
+        },
+        {
+            "name": "post",
+            "signature": "post(string $postType = 'post'): PressGang\\Muster\\Builders\\PostBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a post builder for a given post type."
+        },
+        {
+            "name": "page",
+            "signature": "page(): PressGang\\Muster\\Builders\\PostBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a page post builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "term",
+            "signature": "term(string $taxonomy, string|null $name = NULL): PressGang\\Muster\\Builders\\TermBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a taxonomy term builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "user",
+            "signature": "user(string|null $login = NULL): PressGang\\Muster\\Builders\\UserBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a user builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "option",
+            "signature": "option(string $key): PressGang\\Muster\\Builders\\OptionBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start an option builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "menu",
+            "signature": "menu(string $name): PressGang\\Muster\\Builders\\MenuBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a nav-menu builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "attachment",
+            "signature": "attachment(string $slug): PressGang\\Muster\\Builders\\AttachmentBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start an attachment builder, which requires `key()` before `save()`."
+        },
+        {
+            "name": "comment",
+            "signature": "comment(PressGang\\Muster\\Refs\\PostRef|PressGang\\Muster\\Refs\\LazyRef|int $post): PressGang\\Muster\\Builders\\CommentBuilder",
+            "group": "Content builders",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a comment or threaded-reply builder for a saved post."
+        },
+        {
+            "name": "ref",
+            "signature": "ref(string $key, string|null $scope = NULL): PressGang\\Muster\\Refs\\LazyRef",
+            "group": "References",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Create a save-time reference to a stable logical resource key."
+        },
+        {
+            "name": "pattern",
+            "signature": "pattern(string $name): PressGang\\Muster\\Patterns\\Pattern",
+            "group": "Patterns & recipes",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Define a repeatable specification for generating multiple similar items."
+        },
+        {
+            "name": "recipe",
+            "signature": "recipe(string $recipe): PressGang\\Muster\\Patterns\\Recipe",
+            "group": "Patterns & recipes",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Instantiate a reusable Recipe class for this seeding context."
+        },
+        {
+            "name": "sequence",
+            "signature": "sequence(mixed ...$values): PressGang\\Muster\\Patterns\\Sequence",
+            "group": "Patterns & recipes",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Create an immutable cycling value sequence for Pattern iterations."
+        },
+        {
+            "name": "acfFor",
+            "signature": "acfFor(string $target, string $variant = 'populated'): array",
+            "group": "ACF",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Generated ACF values for every field group targeting $target, derived"
+        },
+        {
+            "name": "epoch",
+            "signature": "epoch(): DateTimeImmutable",
+            "group": "Determinism",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Return the reference instant for deterministic fixture dates."
+        },
+        {
+            "name": "at",
+            "signature": "at(DateTimeInterface|string $boundary): DateTimeImmutable",
+            "group": "Determinism",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Resolve a date boundary against the fixture epoch."
+        },
+        {
+            "name": "victuals",
+            "signature": "victuals(): PressGang\\Muster\\Victuals\\Victuals",
+            "group": "Determinism",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Access the Victuals helper for deterministic generated values."
+        },
+        {
+            "name": "defaultEpoch",
+            "signature": "defaultEpoch(): DateTimeInterface|string|null",
+            "group": "Determinism",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Define the scenario's default fixture epoch."
+        },
+        {
+            "name": "truncate",
+            "signature": "truncate(): PressGang\\Muster\\Builders\\TruncateBuilder",
+            "group": "Reset",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Start a truncate (clean-slate reset) builder."
+        },
+        {
+            "name": "resetOwned",
+            "signature": "resetOwned(): int",
+            "group": "Reset",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Permanently delete every resource owned by this concrete Muster."
+        },
+        {
+            "name": "pruneOwned",
+            "signature": "pruneOwned(array $keepKeys = array ()): int",
+            "group": "Reset",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Delete owned resources not touched by the current successful run."
+        },
+        {
+            "name": "define",
+            "signature": "define(int $iteration): PressGang\\Muster\\Contracts\\PersistableDeclaration",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "The default shape for one row. Return a builder \u2014 usually"
+        },
+        {
+            "name": "named",
+            "signature": "named(string $name): static",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Name this batch, giving it a distinct identity: the pattern/group name,"
+        },
+        {
+            "name": "count",
+            "signature": "count(int $count): static",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "How many rows `create()` seeds."
+        },
+        {
+            "name": "withThumbnail",
+            "signature": "withThumbnail(): static",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Give every seeded row a deterministic placeholder featured image."
+        },
+        {
+            "name": "make",
+            "signature": "make(int $iteration): PressGang\\Muster\\Contracts\\PersistableDeclaration",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Build one declaration (the shape plus any active states) without saving."
+        },
+        {
+            "name": "create",
+            "signature": "create(): void",
+            "group": "Recipe",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Seed `count()` rows through a self-keyed Pattern, in a group named for the"
+        },
+        {
+            "name": "count",
+            "signature": "count(int $count): self",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Set the exact number of iterations `build()` will run."
+        },
+        {
+            "name": "seed",
+            "signature": "seed(int $seed): self",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Pin this pattern's Victuals seed, overriding the context-level seed and"
+        },
+        {
+            "name": "after",
+            "signature": "after(string $name, callable $hook): self",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Declare related resources after each primary declaration is saved."
+        },
+        {
+            "name": "withThumbnail",
+            "signature": "withThumbnail(int $width = 1200, int $height = 800): self",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Give every row a deterministic placeholder featured image."
+        },
+        {
+            "name": "build",
+            "signature": "build(callable $builder): PressGang\\Muster\\Patterns\\PatternResult",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Run the pattern callable."
+        },
+        {
+            "name": "using",
+            "signature": "using(PressGang\\Muster\\Patterns\\Recipe $recipe): PressGang\\Muster\\Patterns\\PatternResult",
+            "group": "Pattern",
+            "sets_args": [],
+            "reads_globals": false,
+            "wp_docs": [],
+            "notes": "Run this Pattern from a reusable Recipe."
+        }
+    ]
+}
