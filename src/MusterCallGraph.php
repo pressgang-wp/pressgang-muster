@@ -63,6 +63,23 @@ final class MusterCallGraph
     }
 
     /**
+     * The run's root scenario — the outermost caller once any `call()` edge has
+     * been entered — or $fallback when nothing has been chained yet (a Muster
+     * running standalone).
+     *
+     * Shared run-scoped resources (e.g. ACF support attachments and stubs that
+     * several chained Musters would otherwise each try to own) attribute to this
+     * so they are created once and reused, rather than colliding across scopes.
+     *
+     * @param class-string<Muster> $fallback
+     * @return class-string<Muster>
+     */
+    public function rootOr(string $fallback): string
+    {
+        return $this->stack[0] ?? $fallback;
+    }
+
+    /**
      * Leave a chained Muster and record successful completion.
      *
      * @param class-string<Muster> $target

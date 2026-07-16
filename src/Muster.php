@@ -348,9 +348,14 @@ abstract class Muster
     {
         $this->context->scope()->assertDeclarationAllowed('ACF fixture generation');
 
+        // ACF support resources (placeholder attachments, stub posts/terms) are
+        // shared across a run: the same field group can target many post types
+        // and templates, so several chained Musters would each try to own the
+        // one placeholder. Attribute them to the run's root scenario so they are
+        // created once and reused. Standalone, the root IS this Muster.
         $generator = new AcfValueGenerator(
             $this->victuals(),
-            ContextProviders::wire($this->context, static::class)
+            ContextProviders::wire($this->context, $this->context->callGraph()->rootOr(static::class))
         );
 
         return ThemeAcf::valuesFor($target, $generator, $variant);

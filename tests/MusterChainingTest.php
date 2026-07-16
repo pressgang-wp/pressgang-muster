@@ -51,12 +51,62 @@ final class RecursiveSecondMuster extends Muster
     }
 }
 
+final class AcfSharedChildOne extends Muster
+{
+    public function run(): void
+    {
+        $this->acfFor('event');
+    }
+}
+
+final class AcfSharedChildTwo extends Muster
+{
+    public function run(): void
+    {
+        $this->acfFor('event');
+    }
+}
+
+final class AcfSharedRootMuster extends Muster
+{
+    public function run(): void
+    {
+        $this->call(AcfSharedChildOne::class, AcfSharedChildTwo::class);
+    }
+}
+
 final class MusterChainingTest extends TestCase
 {
     protected function setUp(): void
     {
         reset_wordpress_stub_state();
         $GLOBALS['__muster_chain'] = [];
+    }
+
+    public function testChainedMustersShareAcfSupportResourcesInsteadOfColliding(): void
+    {
+        // A field group with a media field, so acfFor() must create a
+        // placeholder attachment. Two chained Musters generate values for the
+        // same target: the shared support attachment has to be created once and
+        // reused, not owned twice — otherwise the second call throws an
+        // ownership conflict on the resource the first created.
+        $dir = $GLOBALS['__muster_stylesheet_dir'] . '/acf-json';
+        @mkdir($dir, 0755, true);
+        file_put_contents($dir . '/group_event.json', json_encode([
+            'key' => 'group_event',
+            'title' => 'Event',
+            'fields' => [['key' => 'field_hero', 'name' => 'hero', 'type' => 'image']],
+            'location' => [[['param' => 'post_type', 'operator' => '==', 'value' => 'event']]],
+        ]));
+
+        $context = new MusterContext(new VictualsFactory(), seed: 42);
+
+        (new AcfSharedRootMuster($context))->run();
+
+        self::assertCount(
+            1,
+            get_posts(['name' => 'seed-hero', 'post_type' => 'attachment', 'post_status' => 'any'])
+        );
     }
 
     public function testCallRunsDependenciesInOrderWithTheSharedContext(): void
