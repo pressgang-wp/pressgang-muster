@@ -16,9 +16,11 @@ final class ThemeAcf
     /**
      * Generated values for every field group targeting $target.
      *
-     * @param string $target A post type slug (e.g. `event`) or page template
-     *     path (e.g. `page-templates/contact.php`) — matched against each
-     *     group's location rules via {@see AcfJson::targets()}.
+     * @param string $target A seedable location value matched against each
+     *     group's rules via {@see AcfJson::targets()}: a post type slug
+     *     (`event`), a page/post template path (`page-templates/contact.php`),
+     *     an options-page slug (`site-options`), a page_type (`front_page`), or
+     *     a nav-menu-item location value (`location/primary`).
      * @param AcfValueGenerator $generator
      * @param string $variant `populated` or `minimal`.
      * @param string|null $acfJsonDir Override for tests; defaults to the
@@ -57,6 +59,14 @@ final class ThemeAcf
     }
 
     /**
+     * Whether any of a group's seedable location rules point at $target.
+     *
+     * Delegates the "what is seedable" question to {@see AcfJson::targets()},
+     * which already filters to {@see AcfJson::SEEDABLE_PARAMS} — so a target may
+     * be a post type, a page/post template path, an options-page slug, a
+     * page_type (e.g. `front_page`), or a nav-menu-item location value. Kept as
+     * a value match with no second allowlist here, so the two can never drift.
+     *
      * @param array<string, mixed> $group
      * @param string $target
      * @return bool
@@ -64,7 +74,7 @@ final class ThemeAcf
     private static function groupTargets(array $group, string $target): bool
     {
         foreach (AcfJson::targets($group) as $rule) {
-            if ($rule['value'] === $target && in_array($rule['param'], ['post_type', 'page_template'], true)) {
+            if ($rule['value'] === $target) {
                 return true;
             }
         }

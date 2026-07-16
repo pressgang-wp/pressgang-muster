@@ -15,6 +15,7 @@ from the source. Behaviour that the code already states plainly does not need on
 | [0002](0002-plan-apply-and-structured-results.md) | Plan/apply reconciliation and structured results | WordPress has no transaction spanning its APIs, so the plan is advisory and the apply pass revalidates. |
 | [0003](0003-named-declaration-groups.md) | Named declaration groups | Only a callback boundary can withhold evaluation, rather than merely suppressing effect. |
 | [0004](0004-deterministic-fixture-clock.md) | Deterministic fixture clock | A seed makes randomness repeatable but does not define what "now" means. |
+| [0005](0005-seedable-location-params.md) | Seedable location params and the framework-agnostic boundary | One list of reachable ACF params keeps consumers in sync, and gates Muster against absorbing theme-framework assumptions. |
 
 Records are immutable once accepted. Supersede a decision with a new record
 rather than rewriting history in an old one.

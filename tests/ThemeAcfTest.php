@@ -45,6 +45,29 @@ final class ThemeAcfTest extends TestCase
             'fields' => [['key' => 'field_footer', 'name' => 'footer', 'type' => 'text']],
             'location' => [[['param' => 'options_page', 'operator' => '==', 'value' => 'site-options']]],
         ]));
+
+        // Groups on the three location params that were previously unseedable:
+        // the front page, a post template, and a nav-menu-item location.
+        file_put_contents($this->acfJsonDir . '/group_hero_home.json', json_encode([
+            'key' => 'group_hero_home',
+            'title' => 'Hero Home',
+            'fields' => [['key' => 'field_hero_title', 'name' => 'hero_title', 'type' => 'text']],
+            'location' => [[['param' => 'page_type', 'operator' => '==', 'value' => 'front_page']]],
+        ]));
+
+        file_put_contents($this->acfJsonDir . '/group_cta.json', json_encode([
+            'key' => 'group_cta',
+            'title' => 'CTA',
+            'fields' => [['key' => 'field_cta_text', 'name' => 'cta_text', 'type' => 'text']],
+            'location' => [[['param' => 'post_template', 'operator' => '==', 'value' => 'page-templates/contact.php']]],
+        ]));
+
+        file_put_contents($this->acfJsonDir . '/group_menu.json', json_encode([
+            'key' => 'group_menu',
+            'title' => 'Menu Item Columns',
+            'fields' => [['key' => 'field_columns', 'name' => 'columns', 'type' => 'text']],
+            'location' => [[['param' => 'nav_menu_item', 'operator' => '==', 'value' => 'location/primary']]],
+        ]));
     }
 
     private function generator(): AcfValueGenerator
@@ -67,6 +90,38 @@ final class ThemeAcfTest extends TestCase
 
         self::assertArrayHasKey('field_map', $values);
         self::assertArrayNotHasKey('field_venue', $values);
+    }
+
+    public function testValuesForMatchesOptionsPageTarget(): void
+    {
+        $values = ThemeAcf::valuesFor('site-options', $this->generator(), 'populated', $this->acfJsonDir);
+
+        self::assertArrayHasKey('field_footer', $values);
+        self::assertArrayNotHasKey('field_venue', $values);
+    }
+
+    public function testValuesForMatchesFrontPageTarget(): void
+    {
+        $values = ThemeAcf::valuesFor('front_page', $this->generator(), 'populated', $this->acfJsonDir);
+
+        self::assertArrayHasKey('field_hero_title', $values);
+    }
+
+    public function testValuesForMatchesPostTemplateTarget(): void
+    {
+        $values = ThemeAcf::valuesFor('page-templates/contact.php', $this->generator(), 'populated', $this->acfJsonDir);
+
+        // Both the page_template group and the post_template group live at this
+        // path, so both sets of fields resolve for the one target string.
+        self::assertArrayHasKey('field_cta_text', $values);
+        self::assertArrayHasKey('field_map', $values);
+    }
+
+    public function testValuesForMatchesNavMenuItemTarget(): void
+    {
+        $values = ThemeAcf::valuesFor('location/primary', $this->generator(), 'populated', $this->acfJsonDir);
+
+        self::assertArrayHasKey('field_columns', $values);
     }
 
     public function testValuesForUnknownTargetIsEmpty(): void

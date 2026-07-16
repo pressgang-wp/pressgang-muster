@@ -13,6 +13,26 @@ namespace PressGang\Muster\Acf;
 final class AcfJson
 {
     /**
+     * ACF location params a seeder can act on, and the single source of truth
+     * for "seedable" across the toolkit — {@see targets()} and
+     * {@see ThemeAcf::groupTargets()} both defer to this list so they can never
+     * disagree about what is reachable.
+     *
+     * All six are plain WordPress/ACF location params; nothing here assumes a
+     * particular theme framework (see docs/adr/0005-seedable-location-params.md).
+     *
+     * @var list<string>
+     */
+    public const SEEDABLE_PARAMS = [
+        'post_type',
+        'page_template',
+        'post_template',
+        'options_page',
+        'page_type',
+        'nav_menu_item',
+    ];
+
+    /**
      * Load all field groups from a directory of ACF JSON exports.
      *
      * Files without a `key` and `fields` array (e.g. ACF's index stubs)
@@ -40,11 +60,12 @@ final class AcfJson
     /**
      * The seedable targets a group's location rules point at.
      *
-     * ACF locations are an OR-list of AND-rule groups. Only equality rules
-     * for `post_type`, `page_template`, and `options_page` are returned —
-     * the params a seeder can act on (create a post of that type / a page
-     * with that template / write the group's option values). Other params
-     * (taxonomy terms, user roles) are out of scope for v1.
+     * ACF locations are an OR-list of AND-rule groups. Equality rules for any
+     * of {@see SEEDABLE_PARAMS} are returned — every editorial surface a seeder
+     * can act on: create a post of that type, a page/post with that template,
+     * write a group's option values, seed the front page, or attach values to
+     * a location's nav-menu items. Non-equality operators and unseedable params
+     * (taxonomy terms, user roles) are skipped.
      *
      * @param array<string, mixed> $group A decoded field group.
      * @return array<int, array{param: string, value: string}>
@@ -57,7 +78,7 @@ final class AcfJson
             foreach ((array) $andGroup as $rule) {
                 $param = $rule['param'] ?? '';
 
-                if (($rule['operator'] ?? '') === '==' && in_array($param, ['post_type', 'page_template', 'options_page'], true)) {
+                if (($rule['operator'] ?? '') === '==' && in_array($param, self::SEEDABLE_PARAMS, true)) {
                     $targets[] = ['param' => $param, 'value' => (string) $rule['value']];
                 }
             }
