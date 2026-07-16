@@ -17,6 +17,7 @@ from the source. Behaviour that the code already states plainly does not need on
 | [0004](0004-deterministic-fixture-clock.md) | Deterministic fixture clock | A seed makes randomness repeatable but does not define what "now" means. |
 | [0005](0005-seedable-location-params.md) | Seedable location params and the framework-agnostic boundary | One list of reachable ACF params keeps consumers in sync, and gates Muster against absorbing theme-framework assumptions. |
 | [0006](0006-seeder-authoring-ergonomics.md) | Seeder authoring ergonomics | Cut accidental verbosity in stages while keeping keys stable and determinism/ownership/plan-apply intact. |
+| [0007](0007-vocabulary-not-orm-factories.md) | Vocabulary is not the ORM factory vocabulary | "Factory" implies a Model and an ORM WordPress lacks; Muster keeps Muster/Definition/Victuals (Recipe noted as a candidate rename). |
 
 Records are immutable once accepted. Supersede a decision with a new record
 rather than rewriting history in an old one.
