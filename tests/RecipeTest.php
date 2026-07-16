@@ -19,7 +19,7 @@ final class EventTypeRecipe extends Recipe
     {
         return $this->muster->term('event_type')
             ->name('Type ' . $iteration)
-            ->slug('type-' . $iteration);
+            ->slug($this->slugFor($iteration));
     }
 
     public function described(): static
@@ -53,8 +53,21 @@ final class RecipeTest extends TestCase
         $described = $muster->recipe(EventTypeRecipe::class)->described();
         $muster->pattern('described-types')->count(2)->using($described);
 
-        self::assertSame('Description 1', $GLOBALS['__muster_wp_terms']['event_type::type-1']['description']);
-        self::assertSame('Description 2', $GLOBALS['__muster_wp_terms']['event_type::type-2']['description']);
+        self::assertSame('Description 1', $GLOBALS['__muster_wp_terms']['event_type::eventtype-1']['description']);
+        self::assertSame('Description 2', $GLOBALS['__muster_wp_terms']['event_type::eventtype-2']['description']);
+    }
+
+    public function testNamedGivesTheBatchADistinctIdentity(): void
+    {
+        $muster = $this->muster();
+
+        // The default batch and a `named()` batch of the same recipe coexist
+        // rather than colliding — the identity a test scenario relies on.
+        $muster->recipe(EventTypeRecipe::class)->count(1)->create();
+        $muster->recipe(EventTypeRecipe::class)->named('special')->count(1)->create();
+
+        self::assertArrayHasKey('event_type::eventtype-1', $GLOBALS['__muster_wp_terms']);
+        self::assertArrayHasKey('event_type::special-1', $GLOBALS['__muster_wp_terms']);
     }
 
     public function testMakeBuildsWithoutPersistingAndWithoutInactiveStates(): void

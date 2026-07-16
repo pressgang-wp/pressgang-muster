@@ -31,6 +31,8 @@ abstract class Recipe
 
     private bool $thumbnail = false;
 
+    private ?string $prefix = null;
+
     /**
      * @param Muster $muster The seeding context whose builders the recipe uses.
      */
@@ -48,17 +50,51 @@ abstract class Recipe
     abstract public function define(int $iteration): PersistableDeclaration;
 
     /**
-     * The pattern and group name — auto-keys become `<name>:<i>`. Defaults to the
+     * Name this batch, giving it a distinct identity: the pattern/group name,
+     * the auto-keys (`<name>:<i>`), and — via {@see slugFor()} — the row slugs
+     * all derive from it. Use it so a test scenario does not collide with the
+     * baseline seed of the same recipe.
+     *
+     * @param string $name
+     * @return static
+     */
+    public function named(string $name): static
+    {
+        $variant = clone $this;
+        $variant->prefix = $name;
+
+        return $variant;
+    }
+
+    /**
+     * The pattern and group name — the `named()` value if set, otherwise the
      * class short name without the `Recipe` suffix, lowercased (`HitRecipe` →
-     * `hit`); override for a different name.
+     * `hit`).
      *
      * @return string
      */
     protected function name(): string
     {
+        if ($this->prefix !== null) {
+            return $this->prefix;
+        }
+
         $short = (new ReflectionClass($this))->getShortName();
 
         return strtolower((string) preg_replace('/Recipe$/', '', $short)) ?: strtolower($short);
+    }
+
+    /**
+     * A deterministic slug for one row, derived from the batch {@see name()} —
+     * `hit-1`, or `featured-hit-1` after `named('featured-hit')`. Use it in
+     * `define()` so the recipe's identity stays consistent when renamed.
+     *
+     * @param int $iteration
+     * @return string
+     */
+    final protected function slugFor(int $iteration): string
+    {
+        return $this->name() . '-' . $iteration;
     }
 
     /**
