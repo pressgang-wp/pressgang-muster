@@ -148,4 +148,44 @@ final class ThemeAcfTest extends TestCase
         self::assertSame(1, $muster->resetOwned());
         self::assertSame([], get_posts(['name' => 'seed-hero', 'post_type' => 'attachment']));
     }
+
+    public function testContentPreFillsAGeneratedTitleAndBody(): void
+    {
+        $muster = $this->contentMuster();
+
+        $muster->content('event')->key('event:one')->slug('an-event')->save();
+
+        $stored = $GLOBALS['__muster_wp_posts']['event::an-event'];
+        self::assertNotSame('', (string) ($stored['post_title'] ?? ''));
+        self::assertNotSame('', (string) ($stored['post_content'] ?? ''));
+    }
+
+    public function testContentAppliesAcfDefaultsForTheType(): void
+    {
+        $muster = $this->contentMuster();
+
+        $muster->content('event')->key('event:one')->slug('an-event')->save();
+
+        // The event group's image field means acfFor() created a placeholder
+        // attachment — evidence the ACF defaults were generated and applied.
+        self::assertNotSame([], get_posts(['name' => 'seed-hero', 'post_type' => 'attachment']));
+    }
+
+    public function testContentDefaultsAreOverridable(): void
+    {
+        $muster = $this->contentMuster();
+
+        $muster->content('event')->key('event:one')->slug('an-event')->title('A specific title')->save();
+
+        self::assertSame('A specific title', $GLOBALS['__muster_wp_posts']['event::an-event']['post_title']);
+    }
+
+    private function contentMuster(): Muster
+    {
+        return new class(new MusterContext(new VictualsFactory(), seed: 42)) extends Muster {
+            public function run(): void
+            {
+            }
+        };
+    }
 }

@@ -204,6 +204,36 @@ abstract class Muster
     }
 
     /**
+     * A post builder for $postType pre-filled with generated defaults: a
+     * headline title, paragraph content, and the ACF values `acfFor()` derives
+     * for the type. It is the "populated content" shape in one place, so a
+     * seeder declares the differences (slug, terms, thumbnail) rather than the
+     * whole post.
+     *
+     * Every default is a plain builder call — override any of them afterwards
+     * exactly as on a bare {@see post()}. Generated values draw from the active
+     * (pattern-scoped, when inside a Pattern) Victuals stream, so output stays
+     * deterministic. This is opt-in: bare `post()` still writes only what you
+     * declare, which is what the sparse "minimal" fixtures rely on.
+     *
+     * @param string $postType
+     * @return PostBuilder
+     */
+    public function content(string $postType = 'post'): PostBuilder
+    {
+        $builder = $this->post($postType)
+            ->title($this->victuals()->headline())
+            ->content($this->victuals()->paragraphs(2));
+
+        $acf = $this->acfFor($postType);
+        if ($acf !== []) {
+            $builder->acf($acf);
+        }
+
+        return $builder;
+    }
+
+    /**
      * Start a taxonomy term builder, which requires `key()` before `save()`.
      *
      * @param string $taxonomy
