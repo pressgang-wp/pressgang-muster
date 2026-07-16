@@ -76,14 +76,29 @@ final class ContextProviders
     private static function post(MusterContext $context, string $scope, string $prefix, array $postTypes): int
     {
         $type = $postTypes[0] ?? 'post';
+        $slug = "{$prefix}-related-" . Slug::sanitize($type);
 
-        return (new PostBuilder($context, $type, ownershipScope: $scope))
+        $ref = (new PostBuilder($context, $type, ownershipScope: $scope))
             ->key('acf:post:' . Slug::sanitize($type))
             ->title(ucfirst($type) . ' fixture')
-            ->slug("{$prefix}-related-" . Slug::sanitize($type))
+            ->slug($slug)
             ->status('publish')
-            ->save()
-            ->id();
+            // Pin well before the fixture epoch so a relationship stub never
+            // outranks real seeded content in date-ordered feeds (latest posts,
+            // archives). Deterministic: derived from the shared clock.
+            ->date($context->clock()->epoch()->modify('-1 year')->format('Y-m-d H:i:s'))
+            ->save();
+
+        // A placeholder featured image, so a stub that does surface (a
+        // relationship card, an otherwise-empty feed) shows a thumbnail rather
+        // than the theme's empty-image fallback.
+        (new AttachmentBuilder($context, "{$slug}-thumb", $scope))
+            ->key('acf:post-thumb:' . Slug::sanitize($type))
+            ->placeholder(1200, 800)
+            ->featuredOn($ref)
+            ->save();
+
+        return $ref->id();
     }
 
     /**
