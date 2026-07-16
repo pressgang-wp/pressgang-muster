@@ -18,6 +18,7 @@ from the source. Behaviour that the code already states plainly does not need on
 | [0005](0005-seedable-location-params.md) | Seedable location params and the framework-agnostic boundary | One list of reachable ACF params keeps consumers in sync, and gates Muster against absorbing theme-framework assumptions. |
 | [0006](0006-seeder-authoring-ergonomics.md) | Seeder authoring ergonomics | Cut accidental verbosity in stages while keeping keys stable and determinism/ownership/plan-apply intact. |
 | [0007](0007-vocabulary-not-orm-factories.md) | Vocabulary is not the ORM factory vocabulary | "Factory" implies a Model and an ORM WordPress lacks; Muster keeps Muster/Definition/Victuals (Recipe noted as a candidate rename). |
+| [0008](0008-definition-renamed-to-recipe.md) | `Definition` renamed to `Recipe` | Completes the Muster → Recipe → Victuals metaphor; legible, ORM-free, no "Factory". Supersedes the ADR 0007 candidate note. |
 
 Records are immutable once accepted. Supersede a decision with a new record
 rather than rewriting history in an old one.

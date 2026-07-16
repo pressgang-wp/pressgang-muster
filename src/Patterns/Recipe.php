@@ -6,13 +6,15 @@ use LogicException;
 use PressGang\Muster\Contracts\PersistableDeclaration;
 
 /**
- * Reusable explicit factory definition for one WordPress resource shape.
+ * A reusable recipe for one WordPress resource shape.
  *
- * A Definition stores a builder factory and optional named transformations.
- * It never persists data itself and does not describe model attributes; the
- * returned declaration remains the sole persistence boundary.
+ * A Recipe stores a builder recipe and optional named variations (states). It
+ * never persists data itself and does not describe model attributes — the
+ * returned declaration remains the sole persistence boundary. It is Muster's
+ * reusable-shape layer: a Recipe uses Victuals (the provisions) to produce a
+ * resource declaration, with no Model and no ORM (see ADR 0007).
  */
-final class Definition
+final class Recipe
 {
     use AssertsDeclarations;
 
@@ -27,14 +29,14 @@ final class Definition
     private array $activeStates = [];
 
     /**
-     * @param string $name Human-readable definition name used in diagnostics.
-     * @param callable(int): PersistableDeclaration $factory
+     * @param string $name Human-readable recipe name used in diagnostics.
+     * @param callable(int): PersistableDeclaration $recipe
      */
-    public function __construct(private string $name, private $factory)
+    public function __construct(private string $name, private $recipe)
     {
         $this->name = trim($name);
         if ($this->name === '') {
-            throw new LogicException('Definition name must not be empty.');
+            throw new LogicException('Recipe name must not be empty.');
         }
     }
 
@@ -52,10 +54,10 @@ final class Definition
     {
         $name = trim($name);
         if ($name === '') {
-            throw new LogicException('Definition state name must not be empty.');
+            throw new LogicException('Recipe state name must not be empty.');
         }
         if (array_key_exists($name, $this->states)) {
-            throw new LogicException(sprintf('Definition [%s] state [%s] is already registered.', $this->name, $name));
+            throw new LogicException(sprintf('Recipe [%s] state [%s] is already registered.', $this->name, $name));
         }
 
         $this->states[$name] = $transform;
@@ -80,7 +82,7 @@ final class Definition
 
         foreach ($names as $name) {
             if (!array_key_exists($name, $this->states)) {
-                throw new LogicException(sprintf('Definition [%s] has no state [%s].', $this->name, $name));
+                throw new LogicException(sprintf('Recipe [%s] has no state [%s].', $this->name, $name));
             }
 
             $variant->activeStates[] = $name;
@@ -98,14 +100,14 @@ final class Definition
     public function make(int $iteration): PersistableDeclaration
     {
         $declaration = $this->assertDeclaration(
-            ($this->factory)($iteration),
-            sprintf('Definition [%s] factory', $this->name)
+            ($this->recipe)($iteration),
+            sprintf('Recipe [%s]', $this->name)
         );
 
         foreach ($this->activeStates as $state) {
             $declaration = $this->assertDeclaration(
                 ($this->states[$state])($declaration, $iteration),
-                sprintf('Definition [%s] state [%s]', $this->name, $state)
+                sprintf('Recipe [%s] state [%s]', $this->name, $state)
             );
         }
 

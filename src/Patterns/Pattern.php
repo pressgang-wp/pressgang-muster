@@ -141,14 +141,14 @@ final class Pattern
     }
 
     /**
-     * Run this Pattern from a reusable explicit Definition.
+     * Run this Pattern from a reusable Recipe.
      *
-     * @param Definition $definition
+     * @param Recipe $recipe
      * @return PatternResult
      */
-    public function using(Definition $definition): PatternResult
+    public function using(Recipe $recipe): PatternResult
     {
-        return $this->build(fn (int $iteration) => $definition->make($iteration));
+        return $this->build(fn (int $iteration) => $recipe->make($iteration));
     }
 
     public function name(): string

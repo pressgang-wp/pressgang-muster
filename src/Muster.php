@@ -19,7 +19,7 @@ use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\Builders\TruncateBuilder;
 use PressGang\Muster\Builders\UserBuilder;
 use PressGang\Muster\Patterns\Pattern;
-use PressGang\Muster\Patterns\Definition;
+use PressGang\Muster\Patterns\Recipe;
 use PressGang\Muster\Patterns\Sequence;
 use PressGang\Muster\Refs\PostRef;
 use PressGang\Muster\Refs\LazyRef;
@@ -466,20 +466,21 @@ abstract class Muster
     }
 
     /**
-     * Define a reusable explicit resource declaration.
+     * A reusable recipe for one resource shape.
      *
-     * Definitions and their states only configure builders. They do not write
-     * until consumed by a Pattern or saved directly by the caller.
+     * A Recipe and its states only configure builders — a Recipe uses Victuals
+     * to produce a resource declaration, not a Model. It does not write until
+     * consumed by a Pattern or saved directly by the caller.
      *
      * @param string $name
-     * @param callable(int): \PressGang\Muster\Contracts\PersistableDeclaration $factory
-     * @return Definition
+     * @param callable(int): \PressGang\Muster\Contracts\PersistableDeclaration $recipe
+     * @return Recipe
      */
-    public function definition(string $name, callable $factory): Definition
+    public function recipe(string $name, callable $recipe): Recipe
     {
-        $this->context->scope()->assertDeclarationAllowed('Definition');
+        $this->context->scope()->assertDeclarationAllowed('Recipe');
 
-        return new Definition($name, $factory);
+        return new Recipe($name, $recipe);
     }
 
     /**

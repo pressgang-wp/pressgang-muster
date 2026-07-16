@@ -11,17 +11,17 @@ use PressGang\Muster\MusterContext;
 use PressGang\Muster\Victuals\VictualsFactory;
 use UnexpectedValueException;
 
-final class DefinitionTest extends TestCase
+final class RecipeTest extends TestCase
 {
     protected function setUp(): void
     {
         reset_wordpress_stub_state();
     }
 
-    public function testDefinitionCanBeReusedWithAnIsolatedNamedState(): void
+    public function testRecipeCanBeReusedWithAnIsolatedNamedState(): void
     {
         $muster = $this->muster();
-        $definition = $muster->definition(
+        $recipe = $muster->recipe(
             'event-type',
             fn (int $i): TermBuilder => $muster->term('event_type')
                 ->key('event-type:' . $i)
@@ -32,19 +32,19 @@ final class DefinitionTest extends TestCase
             fn (PersistableDeclaration $term, int $i): PersistableDeclaration => $term->description('Description ' . $i)
         );
 
-        $muster->pattern('described-types')->count(2)->using($definition->with('described'));
+        $muster->pattern('described-types')->count(2)->using($recipe->with('described'));
 
         self::assertSame('Description 1', $GLOBALS['__muster_wp_terms']['event_type::type-1']['description']);
         self::assertSame('Description 2', $GLOBALS['__muster_wp_terms']['event_type::type-2']['description']);
 
-        $plain = $definition->make(3);
+        $plain = $recipe->make(3);
         self::assertInstanceOf(TermBuilder::class, $plain);
     }
 
     public function testUnknownStateFailsBeforeThePatternRuns(): void
     {
         $muster = $this->muster();
-        $definition = $muster->definition(
+        $recipe = $muster->recipe(
             'event-type',
             fn (int $i): TermBuilder => $muster->term('event_type')->key('type:' . $i)->name('Type')
         );
@@ -52,13 +52,13 @@ final class DefinitionTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('has no state [missing]');
 
-        $definition->with('missing');
+        $recipe->with('missing');
     }
 
     public function testInvalidStateResultFailsLoudly(): void
     {
         $muster = $this->muster();
-        $definition = $muster->definition(
+        $recipe = $muster->recipe(
             'event-type',
             fn (int $i): TermBuilder => $muster->term('event_type')->key('type:' . $i)->name('Type')
         )->state('invalid', fn (PersistableDeclaration $term, int $i): object => new \stdClass());
@@ -66,7 +66,7 @@ final class DefinitionTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage('state [invalid] must return PersistableDeclaration');
 
-        $definition->with('invalid')->make(1);
+        $recipe->with('invalid')->make(1);
     }
 
     private function muster(): Muster

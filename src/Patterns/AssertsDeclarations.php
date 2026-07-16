@@ -8,7 +8,7 @@ use UnexpectedValueException;
 /**
  * Shared fail-fast check that a callable honoured the declaration contract.
  *
- * Pattern factories, Definition factories and states, and after-hooks all
+ * Pattern factories, Recipe factories and states, and after-hooks all
  * promise to return a PersistableDeclaration without persisting anything
  * themselves. This trait centralises the loud failure when that promise is
  * broken, so every violation reads the same way regardless of where the
