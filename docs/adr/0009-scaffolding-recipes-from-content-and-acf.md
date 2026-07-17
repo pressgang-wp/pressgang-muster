@@ -1,6 +1,6 @@
 # ADR 0009: Scaffolding Recipes from content and ACF schema (`wp capstan make recipe`)
 
-- Status: Proposed
+- Status: Accepted — v1 (scalar fields) implemented in Capstan
 - Date: 2026-07-17
 
 ## Context
@@ -94,17 +94,25 @@ name and type, so the developer finishes the wiring; the scaffold does the tedio
 
 ### Ownership
 
-The command lives in **Capstan** (it owns `make *`), but the field-type → value
-knowledge is **Muster's** and lives there as a reusable mapper Capstan calls — so
-the mapping stays beside the builders it targets and evolves with them. Capstan
-assembles and writes the file; Muster says what a field of each type becomes. Same
-split as everything else: Capstan scaffolds, Muster seeds.
+The command **and** the field mapper live in **Capstan** (it owns `make *` and the
+Muster code templates such as `SiteMusterTemplate`): scaffolding emits authoring
+*code* — `Victuals` expressions and captured literals — not runtime values, so it
+belongs with Capstan's other generators (`AcfFieldMapper` + `RecipeTemplate`).
+**Muster** owns the `Victuals` vocabulary that generated code targets, and the
+mapper tracks it. Same split as everything else: Capstan scaffolds, Muster seeds.
+
+> Note: an earlier draft placed the mapper in Muster. It moved to Capstan on
+> implementation — the mapper produces *code strings*, a scaffolding concern,
+> not runtime values.
 
 ### Phased scope
 
-- **v1** — schema mode for scalars, dates, `true_false`, selects, and images;
-  capture mode for the same; relational and nested fields emitted as `TODO`
-  stubs. Preview-then-`--force`; keys/`named()`/`slugFor()` per Recipe convention.
+- **v1 (shipped)** — `wp capstan make recipe` with `--post-type` / `--page-template`
+  (schema) and `--from-post` (capture), mapping the **scalar** fields (text,
+  textarea, number, email, url, select, radio, true_false). Every other field —
+  media, dates, relations, repeaters — is emitted as a `TODO` stub.
+  Preview-then-`--force`; `slugFor()` keys; no-overwrite.
+- **Next** — dates (epoch-relative) and images/attachments.
 - **Later** — resolve relational fields to `ref()` when the target is (or can be)
   seeded; recurse into repeater/flexible/group; a `--with-refs` mode that also
   scaffolds Recipes for the referenced targets.
