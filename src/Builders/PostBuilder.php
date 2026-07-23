@@ -204,19 +204,27 @@ final class PostBuilder implements PersistableDeclaration
      * `post_type + post_name` (slug). Unowned locator matches require `adopt()`.
      * Lookup is performed with `get_posts()` using `name`, `post_type`, and `post_status=any`.
      * Existing records are updated via `wp_update_post()`; missing records are inserted via
-     * `wp_insert_post()`. Meta payload is applied with `update_post_meta()`.
+     * `wp_insert_post()`. Meta payload is applied with `update_post_meta()`; ACF payload
+     * with `update_field()` via the context adapter.
+     *
+     * A `meta()` key that the theme's acf-json registers as an ACF field for this
+     * post type is rejected before any write (plan and apply alike): it must go
+     * through `acf()` so `update_field()` stores the field-key reference
+     * `get_field()` needs — a raw meta write to that key reads back empty.
      *
      * See: https://developer.wordpress.org/reference/functions/get_posts/
      * See: https://developer.wordpress.org/reference/functions/wp_update_post/
      * See: https://developer.wordpress.org/reference/functions/wp_insert_post/
      * See: https://developer.wordpress.org/reference/functions/update_post_meta/
      *
-     * @throws LogicException If neither slug nor title is set.
+     * @throws LogicException If neither slug nor title is set, or a `meta()` key
+     *     names an ACF field for this post type.
      * @throws RuntimeException If WordPress runtime functions are unavailable or save fails.
      */
     public function save(): PostRef
     {
         $slug = $this->resolveSlug();
+        $this->assertMetaNotAcf($slug);
         $intent = $this->ownershipIntent();
 
         if (!function_exists('get_posts')) {
@@ -378,6 +386,48 @@ final class PostBuilder implements PersistableDeclaration
         }
 
         return (int) $saveResult;
+    }
+
+    /**
+     * Reject a raw `meta()` write that would silently clobber an ACF field.
+     *
+     * ACF stores each field's value under its field name as a post meta key and
+     * a `field_…` reference alongside it; `update_post_meta()` writes only the
+     * former, so `get_field()` reads the value back unformatted or empty. When
+     * acf-json declares the key as an ACF field for this post type, that raw
+     * write is (almost always) a mistake — fail loudly here rather than let the
+     * data land where ACF can't see it. Keys the theme does not register as ACF
+     * fields pass through untouched, so genuine raw meta is unaffected, and with
+     * no acf-json present the check is inert. Runs during planning too, so the
+     * conflict blocks application (ADR 0002).
+     *
+     * @param string $slug The resolved WordPress locator, for the error message.
+     * @return void
+     * @throws LogicException If any `meta()` key names an ACF field for this type.
+     */
+    private function assertMetaNotAcf(string $slug): void
+    {
+        $meta = (array) ($this->payload['meta_input'] ?? []);
+
+        if ($meta === []) {
+            return;
+        }
+
+        $collisions = array_intersect(
+            array_keys($meta),
+            $this->context->acfFieldNames($this->postType),
+        );
+
+        if ($collisions !== []) {
+            throw new LogicException(sprintf(
+                'meta() key(s) [%s] on post [%s:%s] name ACF field(s) declared in the theme\'s '
+                . 'acf-json. Write them with acf([...]) so update_field() stores the field-key '
+                . 'reference get_field() needs; update_post_meta() would leave the value unreadable by ACF.',
+                implode(', ', $collisions),
+                $this->postType,
+                $slug,
+            ));
+        }
     }
 
     /**

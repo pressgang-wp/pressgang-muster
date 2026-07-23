@@ -129,6 +129,54 @@ final class ThemeAcfTest extends TestCase
         self::assertSame([], ThemeAcf::valuesFor('recipe', $this->generator(), 'populated', $this->acfJsonDir));
     }
 
+    public function testFieldNamesForReturnsTopLevelNamesOfTargetedGroups(): void
+    {
+        $names = ThemeAcf::fieldNamesFor('event', $this->acfJsonDir);
+
+        self::assertContains('venue', $names);
+        self::assertContains('hero', $names);
+        self::assertNotContains('map', $names);
+        self::assertNotContains('footer', $names);
+    }
+
+    public function testFieldNamesForUnknownTargetIsEmpty(): void
+    {
+        self::assertSame([], ThemeAcf::fieldNamesFor('recipe', $this->acfJsonDir));
+    }
+
+    public function testMetaWriteToAnAcfFieldNameIsRejected(): void
+    {
+        $muster = $this->contentMuster();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('venue');
+
+        // `venue` is an ACF field on the event group — a raw meta() write to it
+        // would land where ACF can't read it, so save() must refuse.
+        $muster->post('event')->key('event:one')->slug('an-event')->meta(['venue' => 'Town Hall'])->save();
+    }
+
+    public function testMetaWriteToANonAcfKeyIsAllowed(): void
+    {
+        $muster = $this->contentMuster();
+
+        // `capacity` is not an ACF field for the event group, so it is genuine
+        // raw meta and passes through untouched.
+        $ref = $muster->post('event')->key('event:one')->slug('an-event')->meta(['capacity' => 250])->save();
+
+        self::assertSame(250, $GLOBALS['__muster_wp_meta'][$ref->id()]['capacity']);
+    }
+
+    public function testAcfWriteToAnAcfFieldIsUnaffectedByTheGuard(): void
+    {
+        $muster = $this->contentMuster();
+
+        // The guard only inspects meta(); the correct acf() path is never blocked.
+        $ref = $muster->post('event')->key('event:one')->slug('an-event')->acf(['field_venue' => 'Town Hall'])->save();
+
+        self::assertSame('an-event', $ref->slug());
+    }
+
     public function testMusterAcfForResolvesThemeDirAndProviders(): void
     {
         // acfFor() reads the acf-json dir from the (stubbed) active theme and

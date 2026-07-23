@@ -59,6 +59,49 @@ final class ThemeAcf
     }
 
     /**
+     * The top-level field names every acf-json group targeting $target declares.
+     *
+     * Mirrors {@see valuesFor()}'s target matching but returns field *names* —
+     * the meta keys ACF writes each value under — instead of generated values.
+     * A caller uses this to detect a raw `meta()` key that collides with an ACF
+     * field, so it can steer the write to `acf()`/`update_field()` instead. Only
+     * top-level names are returned; sub-field names live inside serialized
+     * repeater/group rows and are never addressable as a post's own meta key.
+     *
+     * @param string $target A seedable location value (post type slug, template
+     *     path, options-page slug, …), matched via {@see AcfJson::targets()}.
+     * @param string|null $acfJsonDir Override for tests; defaults to the active
+     *     theme's acf-json directory.
+     * @return list<string> Unique field names; empty when no acf-json or no match.
+     */
+    public static function fieldNamesFor(string $target, ?string $acfJsonDir = null): array
+    {
+        $dir = $acfJsonDir ?? self::themeAcfJsonDir();
+
+        if ($dir === null || ! is_dir($dir)) {
+            return [];
+        }
+
+        $names = [];
+
+        foreach (AcfJson::groups($dir) as $group) {
+            if (! self::groupTargets($group, $target)) {
+                continue;
+            }
+
+            foreach ((array) $group['fields'] as $field) {
+                $name = (string) ($field['name'] ?? '');
+
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
      * Whether any of a group's seedable location rules point at $target.
      *
      * Delegates the "what is seedable" question to {@see AcfJson::targets()},

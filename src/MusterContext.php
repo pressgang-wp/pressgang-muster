@@ -3,6 +3,7 @@
 namespace PressGang\Muster;
 
 use LogicException;
+use PressGang\Muster\Acf\ThemeAcf;
 use PressGang\Muster\Adapters\AcfAdapterInterface;
 use PressGang\Muster\Adapters\NullAcfAdapter;
 use PressGang\Muster\Clock\FixtureClock;
@@ -194,6 +195,25 @@ final class MusterContext
     public function acf(): AcfAdapterInterface
     {
         return $this->acf;
+    }
+
+    /**
+     * The top-level ACF field names the active theme's acf-json registers for a
+     * target (a post type slug or template path).
+     *
+     * Read-only schema lookup, no writes. Builders use it to reject a raw
+     * `meta()` key that names an ACF field (see {@see \PressGang\Muster\Builders\PostBuilder::save()}):
+     * such a value belongs in `acf()`/`update_field()`, which also stores the
+     * field-key reference `get_field()` needs. Returns an empty list when the
+     * theme ships no acf-json or none of its groups target $target — so with no
+     * ACF schema present the guard is simply inert.
+     *
+     * @param string $target A post type slug or page/post template path.
+     * @return list<string>
+     */
+    public function acfFieldNames(string $target): array
+    {
+        return ThemeAcf::fieldNamesFor($target);
     }
 
     /**
