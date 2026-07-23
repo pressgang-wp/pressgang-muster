@@ -198,22 +198,24 @@ final class MusterContext
     }
 
     /**
-     * The top-level ACF field names the active theme's acf-json registers for a
-     * target (a post type slug or template path).
+     * The top-level ACF field names the active theme's acf-json attaches to a
+     * Muster object (`post` of a type, or `term` of a taxonomy).
      *
      * Read-only schema lookup, no writes. Builders use it to reject a raw
-     * `meta()` key that names an ACF field (see {@see \PressGang\Muster\Builders\PostBuilder::save()}):
-     * such a value belongs in `acf()`/`update_field()`, which also stores the
-     * field-key reference `get_field()` needs. Returns an empty list when the
-     * theme ships no acf-json or none of its groups target $target — so with no
-     * ACF schema present the guard is simply inert.
+     * `meta()` key that names an ACF field (see
+     * {@see \PressGang\Muster\Builders\GuardsAcfMeta}): such a value belongs in
+     * `acf()`/`update_field()`, which also stores the field-key reference
+     * `get_field()` needs. Returns an empty list when the theme ships no acf-json
+     * or nothing attaches to the object — so with no ACF schema present the guard
+     * is simply inert.
      *
-     * @param string $target A post type slug or page/post template path.
+     * @param string $objectType `post` or `term`.
+     * @param string $target The post type slug or taxonomy.
      * @return list<string>
      */
-    public function acfFieldNames(string $target): array
+    public function acfFieldNames(string $objectType, string $target): array
     {
-        return ThemeAcf::fieldNamesFor($target);
+        return ThemeAcf::fieldNamesFor($objectType, $target);
     }
 
     /**

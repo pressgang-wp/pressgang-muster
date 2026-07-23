@@ -26,6 +26,7 @@ final class TermBuilder implements PersistableDeclaration
 {
     use HasOwnership;
     use ResolvesIdentity;
+    use GuardsAcfMeta;
 
     /**
      * @var array<string, mixed>
@@ -146,7 +147,13 @@ final class TermBuilder implements PersistableDeclaration
      * Managed identity is `Muster class + logical key`; the WordPress locator is
      * `taxonomy + slug`. Unowned locator matches require `adopt()`.
      * Existing terms are updated using `wp_update_term()`, missing terms are inserted
-     * via `wp_insert_term()`. Term meta is applied with `update_term_meta()`.
+     * via `wp_insert_term()`. Term meta is applied with `update_term_meta()`; ACF
+     * payload with `update_field()` via the context adapter.
+     *
+     * A `meta()` key that the theme's acf-json registers as an ACF field for this
+     * taxonomy is rejected before any write (plan and apply alike): it must go
+     * through `acf()` so `update_field()` stores the field-key reference
+     * `get_field()` needs — a raw meta write to that key reads back empty.
      *
      * See: https://developer.wordpress.org/reference/functions/get_term_by/
      * See: https://developer.wordpress.org/reference/functions/wp_update_term/
@@ -154,12 +161,20 @@ final class TermBuilder implements PersistableDeclaration
      * See: https://developer.wordpress.org/reference/functions/update_term_meta/
      *
      * @return TermRef
-     * @throws LogicException If neither slug nor name is set.
+     * @throws LogicException If neither slug nor name is set, or a `meta()` key
+     *     names an ACF field for this taxonomy.
      * @throws RuntimeException If WordPress runtime functions are unavailable or save fails.
      */
     public function save(): TermRef
     {
         $slug = $this->resolveSlug();
+        $this->assertMetaKeysNotAcfFields(
+            $this->context,
+            (array) ($this->payload['meta'] ?? []),
+            'term',
+            $this->taxonomy,
+            $this->taxonomy . ':' . $slug,
+        );
         $name = (string) ($this->payload['name'] ?? $slug);
         $intent = $this->ownershipIntent();
 

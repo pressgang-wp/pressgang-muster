@@ -86,4 +86,34 @@ final class AcfJson
 
         return array_values(array_unique($targets, SORT_REGULAR));
     }
+
+    /**
+     * Whether a group has an equality location rule of exactly `$param == $value`.
+     *
+     * Unlike {@see targets()}, this is *not* filtered to {@see SEEDABLE_PARAMS}:
+     * it answers a precise "is this group attached to this exact param/value"
+     * question. The meta-vs-ACF write guard needs it for `taxonomy`, which is a
+     * real ACF location but not a seed target — matching by value alone (as
+     * seeding does) would let a taxonomy and a post type sharing a slug bleed
+     * into each other and mis-fire the guard.
+     *
+     * @param array<string, mixed> $group A decoded field group.
+     * @param string $param An ACF location param, e.g. `post_type` or `taxonomy`.
+     * @param string $value The location value to match.
+     * @return bool
+     */
+    public static function locatedOn(array $group, string $param, string $value): bool
+    {
+        foreach ((array) ($group['location'] ?? []) as $andGroup) {
+            foreach ((array) $andGroup as $rule) {
+                if (($rule['operator'] ?? '') === '=='
+                    && ($rule['param'] ?? '') === $param
+                    && (string) ($rule['value'] ?? '') === $value) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }

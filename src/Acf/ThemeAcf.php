@@ -59,23 +59,42 @@ final class ThemeAcf
     }
 
     /**
-     * The top-level field names every acf-json group targeting $target declares.
+     * The top-level ACF field names attached to a $objectType with locator $target.
      *
-     * Mirrors {@see valuesFor()}'s target matching but returns field *names* —
-     * the meta keys ACF writes each value under — instead of generated values.
-     * A caller uses this to detect a raw `meta()` key that collides with an ACF
-     * field, so it can steer the write to `acf()`/`update_field()` instead. Only
-     * top-level names are returned; sub-field names live inside serialized
-     * repeater/group rows and are never addressable as a post's own meta key.
+     * Returns field *names* — the meta keys ACF writes each value under — for
+     * every acf-json group whose location attaches it to that object. A builder
+     * uses this to detect a raw `meta()` key that collides with an ACF field and
+     * steer the write to `acf()`/`update_field()` instead.
      *
-     * @param string $target A seedable location value (post type slug, template
-     *     path, options-page slug, …), matched via {@see AcfJson::targets()}.
+     * Matching is param-precise (via {@see AcfJson::locatedOn()}), not the
+     * value-only matching seeding uses: `post` matches `post_type == $target`
+     * and `term` matches `taxonomy == $target`, so a taxonomy and post type that
+     * share a slug never bleed into one another. Only top-level names are
+     * returned; sub-field names live inside serialized repeater/group rows and
+     * are never addressable as an object's own meta key. Template- and
+     * page_type-located fields are out of scope here — this guards the fields
+     * every object of the type carries, keyed by its identity param.
+     *
+     * @param string $objectType A Muster object type: `post` or `term` (the same
+     *     vocabulary {@see \PressGang\Muster\Adapters\AcfAdapterInterface::updateFields()}
+     *     uses). Any other type yields an empty list.
+     * @param string $target The post type slug (for `post`) or taxonomy (for `term`).
      * @param string|null $acfJsonDir Override for tests; defaults to the active
      *     theme's acf-json directory.
      * @return list<string> Unique field names; empty when no acf-json or no match.
      */
-    public static function fieldNamesFor(string $target, ?string $acfJsonDir = null): array
+    public static function fieldNamesFor(string $objectType, string $target, ?string $acfJsonDir = null): array
     {
+        $param = match ($objectType) {
+            'post' => 'post_type',
+            'term' => 'taxonomy',
+            default => null,
+        };
+
+        if ($param === null) {
+            return [];
+        }
+
         $dir = $acfJsonDir ?? self::themeAcfJsonDir();
 
         if ($dir === null || ! is_dir($dir)) {
@@ -85,7 +104,7 @@ final class ThemeAcf
         $names = [];
 
         foreach (AcfJson::groups($dir) as $group) {
-            if (! self::groupTargets($group, $target)) {
+            if (! AcfJson::locatedOn($group, $param, $target)) {
                 continue;
             }
 

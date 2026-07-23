@@ -68,6 +68,16 @@ final class ThemeAcfTest extends TestCase
             'fields' => [['key' => 'field_columns', 'name' => 'columns', 'type' => 'text']],
             'location' => [[['param' => 'nav_menu_item', 'operator' => '==', 'value' => 'location/primary']]],
         ]));
+
+        // A group attached to a taxonomy's terms — the term meta/ACF guard's
+        // subject. `taxonomy` is not a seed target (not in SEEDABLE_PARAMS), so
+        // the guard's lookup must match it independently of acfFor().
+        file_put_contents($this->acfJsonDir . '/group_topic.json', json_encode([
+            'key' => 'group_topic',
+            'title' => 'Topic',
+            'fields' => [['key' => 'field_accent', 'name' => 'accent_color', 'type' => 'color_picker']],
+            'location' => [[['param' => 'taxonomy', 'operator' => '==', 'value' => 'topic']]],
+        ]));
     }
 
     private function generator(): AcfValueGenerator
@@ -129,22 +139,43 @@ final class ThemeAcfTest extends TestCase
         self::assertSame([], ThemeAcf::valuesFor('recipe', $this->generator(), 'populated', $this->acfJsonDir));
     }
 
-    public function testFieldNamesForReturnsTopLevelNamesOfTargetedGroups(): void
+    public function testFieldNamesForReturnsPostTypeFieldsByIdentityParam(): void
     {
-        $names = ThemeAcf::fieldNamesFor('event', $this->acfJsonDir);
+        $names = ThemeAcf::fieldNamesFor('post', 'event', $this->acfJsonDir);
 
         self::assertContains('venue', $names);
         self::assertContains('hero', $names);
-        self::assertNotContains('map', $names);
-        self::assertNotContains('footer', $names);
+        self::assertNotContains('map', $names);       // page_template, not post_type
+        self::assertNotContains('accent_color', $names); // taxonomy, not post_type
+    }
+
+    public function testFieldNamesForReturnsTaxonomyFieldsForTerms(): void
+    {
+        $names = ThemeAcf::fieldNamesFor('term', 'topic', $this->acfJsonDir);
+
+        self::assertContains('accent_color', $names);
+        self::assertNotContains('venue', $names);
+    }
+
+    public function testFieldNamesForIsParamPreciseAcrossObjectTypes(): void
+    {
+        // A post type and a taxonomy sharing a slug must not bleed together: the
+        // event post type carries `venue`, the (hypothetical) event taxonomy does
+        // not, so a term lookup on that slug finds nothing.
+        self::assertSame([], ThemeAcf::fieldNamesFor('term', 'event', $this->acfJsonDir));
+    }
+
+    public function testFieldNamesForUnknownObjectTypeIsEmpty(): void
+    {
+        self::assertSame([], ThemeAcf::fieldNamesFor('option', 'event', $this->acfJsonDir));
     }
 
     public function testFieldNamesForUnknownTargetIsEmpty(): void
     {
-        self::assertSame([], ThemeAcf::fieldNamesFor('recipe', $this->acfJsonDir));
+        self::assertSame([], ThemeAcf::fieldNamesFor('post', 'recipe', $this->acfJsonDir));
     }
 
-    public function testMetaWriteToAnAcfFieldNameIsRejected(): void
+    public function testPostMetaWriteToAnAcfFieldNameIsRejected(): void
     {
         $muster = $this->contentMuster();
 
@@ -156,7 +187,7 @@ final class ThemeAcfTest extends TestCase
         $muster->post('event')->key('event:one')->slug('an-event')->meta(['venue' => 'Town Hall'])->save();
     }
 
-    public function testMetaWriteToANonAcfKeyIsAllowed(): void
+    public function testPostMetaWriteToANonAcfKeyIsAllowed(): void
     {
         $muster = $this->contentMuster();
 
@@ -165,6 +196,28 @@ final class ThemeAcfTest extends TestCase
         $ref = $muster->post('event')->key('event:one')->slug('an-event')->meta(['capacity' => 250])->save();
 
         self::assertSame(250, $GLOBALS['__muster_wp_meta'][$ref->id()]['capacity']);
+    }
+
+    public function testTermMetaWriteToAnAcfFieldNameIsRejected(): void
+    {
+        $muster = $this->contentMuster();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('accent_color');
+
+        // `accent_color` is an ACF field on the topic taxonomy group.
+        $muster->term('topic', 'Design')->key('topic:design')->meta(['accent_color' => '#fff'])->save();
+    }
+
+    public function testTermMetaWriteToANonAcfKeyIsAllowed(): void
+    {
+        $muster = $this->contentMuster();
+
+        // `sort_order` is not an ACF field for the topic group — genuine raw meta.
+        $ref = $muster->term('topic', 'Design')->key('topic:design')->meta(['sort_order' => 3])->save();
+
+        self::assertSame('topic', $ref->taxonomy());
+        self::assertSame(3, $GLOBALS['__muster_wp_term_meta'][$ref->termId()]['sort_order']);
     }
 
     public function testAcfWriteToAnAcfFieldIsUnaffectedByTheGuard(): void
