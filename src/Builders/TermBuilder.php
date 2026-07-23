@@ -142,6 +142,53 @@ final class TermBuilder implements PersistableDeclaration
     }
 
     /**
+     * Declare a term from a nested array instead of chained setters.
+     *
+     * The vocabulary is WordPress's own — the `wp_insert_term()` arguments
+     * `name`, `slug`, `description`, and `parent` — so there is no second
+     * vocabulary to learn. Term meta uses `meta_input`, the same key
+     * {@see PostBuilder::fill()} accepts (terms have no native meta array, so
+     * this borrows WordPress's post convention for symmetry across builders).
+     * The remaining keys are the two things WordPress has no argument for: `acf`
+     * (an `update_field()`-shaped map) and Muster's logical `key`/`adopt` identity.
+     *
+     * Each key dispatches to the matching fluent setter, so this is pure sugar:
+     * ref resolution, the raw-meta-vs-ACF guard on save, and merge-upsert
+     * semantics all apply unchanged. `fill()` merges with setters called before
+     * or after it (last write wins), and an unrecognised key throws rather than
+     * being silently dropped.
+     *
+     * This only sets builder state; nothing is written until {@see save()}.
+     *
+     * @param array<string, mixed> $attributes `wp_insert_term()` arguments (name,
+     *     slug, description, parent) plus `meta_input`, `acf`, `key`, and `adopt`.
+     * @return self
+     * @throws LogicException If an attribute key is not a recognised field.
+     */
+    public function fill(array $attributes): self
+    {
+        foreach ($attributes as $field => $value) {
+            match ($field) {
+                'name' => $this->name((string) $value),
+                'slug' => $this->slug((string) $value),
+                'description' => $this->description((string) $value),
+                'parent' => $this->parent($value),
+                'meta_input' => $this->meta((array) $value),
+                'acf' => $this->acf((array) $value),
+                'key' => $this->key((string) $value),
+                'adopt' => $this->adopt((bool) $value),
+                default => throw new LogicException(sprintf(
+                    'fill(): unrecognised key [%s]. Accepts wp_insert_term() arguments '
+                    . '(name, slug, description, parent) plus meta_input, acf, key, adopt.',
+                    $field,
+                )),
+            };
+        }
+
+        return $this;
+    }
+
+    /**
      * Persist the term to WordPress via idempotent upsert.
      *
      * Managed identity is `Muster class + logical key`; the WordPress locator is

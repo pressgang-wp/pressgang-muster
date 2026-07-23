@@ -2,6 +2,7 @@
 
 namespace PressGang\Muster\Tests;
 
+use LogicException;
 use PHPUnit\Framework\TestCase;
 use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\MusterContext;
@@ -84,5 +85,45 @@ final class TermBuilderTest extends TestCase
 
         self::assertSame(0, $ref->termId());
         self::assertCount(0, $GLOBALS['__muster_wp_terms']);
+    }
+
+    public function testFillAppliesWpInsertTermArgsLikeTheFluentSetters(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        // The same result as testSaveInsertsTermWhenMissing, declared as data.
+        $ref = (new TermBuilder($context, 'category'))->fill([
+            'name'        => 'Featured',
+            'slug'        => 'featured',
+            'description' => 'Featured terms',
+            'meta_input'  => ['priority' => 1],
+        ])->save();
+
+        self::assertSame('category', $ref->taxonomy());
+        self::assertSame('featured', $ref->slug());
+        self::assertSame(1, $GLOBALS['__muster_wp_term_meta'][$ref->termId()]['priority']);
+    }
+
+    public function testFillMergesWithFluentSettersLastWriteWins(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new TermBuilder($context, 'category'))
+            ->fill(['slug' => 'merged', 'name' => 'Data name'])
+            ->name('Setter name')
+            ->save();
+
+        self::assertSame('Setter name', $GLOBALS['__muster_wp_terms']['category::merged']['name']);
+    }
+
+    public function testFillThrowsOnUnrecognisedKey(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('post_title');
+
+        // A post field on a term is a category error the mapper must reject.
+        (new TermBuilder($context, 'category'))->fill(['post_title' => 'Wrong builder']);
     }
 }
