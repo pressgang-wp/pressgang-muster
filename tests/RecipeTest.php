@@ -4,6 +4,7 @@ namespace PressGang\Muster\Tests;
 
 use LogicException;
 use PHPUnit\Framework\TestCase;
+use PressGang\Muster\Builders\PostBuilder;
 use PressGang\Muster\Builders\TermBuilder;
 use PressGang\Muster\Muster;
 use PressGang\Muster\MusterContext;
@@ -30,11 +31,46 @@ final class EventTypeRecipe extends Recipe
     }
 }
 
+/**
+ * A post recipe whose body declares its fields as a WP-native `fill()` array
+ * (ADR 0010) rather than chained setters — proving `fill()` needs no Recipe
+ * wiring, since `define()` already returns a builder.
+ */
+final class FeaturedEventRecipe extends Recipe
+{
+    public function define(int $iteration): PostBuilder
+    {
+        return $this->post('event')
+            ->slug($this->slugFor($iteration))
+            ->fill([
+                'post_title'  => 'Event ' . $iteration,
+                'post_status' => 'publish',
+                'meta_input'  => ['featured' => true],
+            ]);
+    }
+}
+
 final class RecipeTest extends TestCase
 {
     protected function setUp(): void
     {
         reset_wordpress_stub_state();
+    }
+
+    public function testDefineCanDeclareFieldsWithAFillArray(): void
+    {
+        $muster = $this->muster();
+
+        $muster->recipe(FeaturedEventRecipe::class)->count(2)->create();
+
+        $events = array_filter(
+            $GLOBALS['__muster_wp_posts'],
+            static fn (array $p): bool => ($p['post_type'] ?? '') === 'event'
+        );
+        self::assertCount(2, $events);
+        self::assertSame('publish', reset($events)['post_status']);
+        self::assertTrue($GLOBALS['__muster_wp_meta'][1]['featured']);
+        self::assertTrue($GLOBALS['__muster_wp_meta'][2]['featured']);
     }
 
     public function testCreateSeedsCountSelfKeyedRows(): void

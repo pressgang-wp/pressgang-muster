@@ -21,10 +21,16 @@ namespace PressGang\Muster;
  *         'posts' => [
  *             'hit'  => ['count' => 5, 'thumbnail' => true, 'terms' => ['hit_group' => 'rotate']],
  *             'post' => ['count' => 5, 'thumbnail' => true],
+ *             'page' => ['count' => 1, 'fill' => ['post_name' => 'about', 'post_title' => 'About']],
  *         ],
  *         'pages' => 'templates',    // one page per registered page template
  *         'menus' => 'locations',    // a menu per registered nav location
  *     ]
+ *
+ * A post spec's optional `fill` block carries explicit WP-native values (see
+ * {@see \PressGang\Muster\Builders\PostBuilder::fill()}) applied to every
+ * generated row — the manifest's way to declare concrete field values, not just
+ * generated ones (ADR 0010).
  */
 final class Manifest
 {
@@ -75,7 +81,9 @@ final class Manifest
 
     /**
      * `postType => spec` — `count` populated posts of the type, optionally with
-     * a thumbnail and rotating taxonomy terms.
+     * a thumbnail, rotating taxonomy terms, and a `fill` block of explicit
+     * WP-native values applied to every row (last, so it wins over generated
+     * content; row slugs stay self-keyed unless `fill` sets `post_name`).
      *
      * @param array<string, array<string, mixed>> $posts
      * @param array<string, int> $terms Term counts, for `rotate` resolution.
@@ -94,7 +102,9 @@ final class Manifest
                     $pattern->withThumbnail();
                 }
 
-                $pattern->build(function (int $i) use ($type, $tags, $terms) {
+                $fill = (array) ($spec['fill'] ?? []);
+
+                $pattern->build(function (int $i) use ($type, $tags, $terms, $fill) {
                     $post = $this->muster->content($type)->slug($type . '-' . $i);
 
                     foreach ($tags as $taxonomy => $mode) {
@@ -102,6 +112,12 @@ final class Manifest
                         if ($slugs !== []) {
                             $post->terms((string) $taxonomy, $slugs);
                         }
+                    }
+
+                    // Explicit values are applied last so they win over the
+                    // generated content and the self-keyed slug (ADR 0010).
+                    if ($fill !== []) {
+                        $post->fill($fill);
                     }
 
                     return $post;

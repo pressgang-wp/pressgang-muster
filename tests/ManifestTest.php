@@ -73,6 +73,33 @@ final class ManifestTest extends TestCase
         ));
     }
 
+    public function testManifestFillAppliesExplicitValuesToEveryRow(): void
+    {
+        $muster = $this->manifestMuster();
+
+        $muster->assemble([
+            'posts' => [
+                'hit' => ['count' => 2, 'fill' => [
+                    'post_status' => 'draft',
+                    'meta_input'  => ['campaign' => 'launch'],
+                ]],
+            ],
+        ]);
+
+        $hits = array_filter(
+            $GLOBALS['__muster_wp_posts'],
+            static fn (array $p): bool => ($p['post_type'] ?? '') === 'hit'
+        );
+        self::assertCount(2, $hits);
+
+        // Explicit values reach every generated row; slugs stay self-keyed.
+        foreach ($hits as $hit) {
+            self::assertSame('draft', $hit['post_status']);
+        }
+        self::assertSame('launch', $GLOBALS['__muster_wp_meta'][1]['campaign']);
+        self::assertSame('launch', $GLOBALS['__muster_wp_meta'][2]['campaign']);
+    }
+
     private function manifestMuster(): Muster
     {
         return new class(new MusterContext(new VictualsFactory(), seed: 42)) extends Muster {
