@@ -187,6 +187,64 @@ final class PostBuilderTest extends TestCase
             ->status('publish')
             ->save();
     }
+
+    public function testFillAppliesWpNativeKeysLikeTheFluentSetters(): void
+    {
+        $context = new MusterContext(new VictualsFactory(), acf: new TestAcfAdapter());
+
+        // The same result as testSaveAppliesExtendedFields, declared as data.
+        (new PostBuilder($context, 'event'))->fill([
+            'post_title'    => 'Extended',
+            'post_name'     => 'extended',
+            'post_status'   => 'publish',
+            'post_excerpt'  => 'Summary',
+            'post_author'   => 3,
+            'post_parent'   => 2,
+            'page_template' => 'templates/custom.php',
+            'tax_input'     => ['category' => ['featured']],
+            'acf'           => ['field_key' => 'field_value'],
+        ])->save();
+
+        self::assertSame('Summary', $GLOBALS['__muster_wp_posts']['event::extended']['post_excerpt']);
+        self::assertSame(3, $GLOBALS['__muster_wp_posts']['event::extended']['post_author']);
+        self::assertSame(2, $GLOBALS['__muster_wp_posts']['event::extended']['post_parent']);
+        self::assertSame('templates/custom.php', $GLOBALS['__muster_wp_meta'][1]['_wp_page_template']);
+        self::assertSame(['featured'], $GLOBALS['__muster_wp_post_terms'][1]['category']);
+        self::assertSame(['field_key' => 'field_value'], $GLOBALS['__muster_wp_acf_last']['fields']);
+    }
+
+    public function testFillDispatchesMetaInput(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        $ref = (new PostBuilder($context, 'event'))
+            ->fill(['post_name' => 'metafill', 'meta_input' => ['legacy_id' => 42]])
+            ->save();
+
+        self::assertSame(42, $GLOBALS['__muster_wp_meta'][$ref->id()]['legacy_id']);
+    }
+
+    public function testFillMergesWithFluentSettersLastWriteWins(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        (new PostBuilder($context, 'event'))
+            ->fill(['post_name' => 'merged', 'post_status' => 'draft'])
+            ->status('publish')
+            ->save();
+
+        self::assertSame('publish', $GLOBALS['__muster_wp_posts']['event::merged']['post_status']);
+    }
+
+    public function testFillThrowsOnUnrecognisedKey(): void
+    {
+        $context = new MusterContext(new VictualsFactory());
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('titel');
+
+        (new PostBuilder($context, 'event'))->fill(['titel' => 'Typo']);
+    }
 }
 
 final class TestAcfAdapter implements AcfAdapterInterface

@@ -30,6 +30,7 @@ final class PostBuilder implements PersistableDeclaration
 {
     use HasOwnership;
     use ResolvesIdentity;
+    use GuardsAcfMeta;
 
     /**
      * @var array<string, mixed>
@@ -198,6 +199,77 @@ final class PostBuilder implements PersistableDeclaration
     }
 
     /**
+     * Declare a post from a nested array instead of chained setters.
+     *
+     * The vocabulary is WordPress's own — the same keys `wp_insert_post()`
+     * accepts (`post_title`, `post_name`, `post_status`, `post_content`,
+     * `post_excerpt`, `post_date`, `post_parent`, `post_author`, `page_template`,
+     * `meta_input`, `tax_input`) — so there is no second vocabulary to learn. The
+     * only additions are the two things WordPress has no key for: `acf` (an
+     * `update_field()`-shaped map) and Muster's logical `key`/`adopt` identity.
+     *
+     * Each key dispatches to the matching fluent setter, so this is pure sugar:
+     * everything they do — ref resolution, the raw-meta-vs-ACF guard on save,
+     * merge-upsert semantics — applies unchanged. `fill()` merges with setters
+     * called before or after it (last write wins), and an unrecognised key
+     * throws rather than being silently dropped.
+     *
+     * Values are the same shape the setters take: `tax_input` is
+     * `['taxonomy' => [slug|id|ref, …]]`, `meta_input`/`acf` are flat maps
+     * (nest arrays for ACF repeaters/groups), and `post_parent`/`post_author`
+     * accept an id or a {@see \PressGang\Muster\Refs\PostRef}/{@see \PressGang\Muster\Refs\UserRef}/{@see \PressGang\Muster\Refs\LazyRef}.
+     *
+     * This only sets builder state; nothing is written until {@see save()}.
+     *
+     * @param array<string, mixed> $attributes WordPress `wp_insert_post()` keys
+     *     plus `acf`, `key`, and `adopt`.
+     * @return self
+     * @throws LogicException If an attribute key is not a recognised field.
+     */
+    public function fill(array $attributes): self
+    {
+        foreach ($attributes as $field => $value) {
+            match ($field) {
+                'post_title' => $this->title((string) $value),
+                'post_name' => $this->slug((string) $value),
+                'post_status' => $this->status((string) $value),
+                'post_content' => $this->content((string) $value),
+                'post_excerpt' => $this->excerpt((string) $value),
+                'post_date' => $this->date((string) $value),
+                'post_parent' => $this->parent($value),
+                'post_author' => $this->author($value),
+                'page_template' => $this->template((string) $value),
+                'meta_input' => $this->meta((array) $value),
+                'tax_input' => $this->fillTaxonomies((array) $value),
+                'acf' => $this->acf((array) $value),
+                'key' => $this->key((string) $value),
+                'adopt' => $this->adopt((bool) $value),
+                default => throw new LogicException(sprintf(
+                    'fill(): unrecognised key [%s]. Accepts wp_insert_post() fields '
+                    . '(post_title, post_name, post_status, post_content, post_excerpt, post_date, '
+                    . 'post_parent, post_author, page_template, meta_input, tax_input) plus acf, key, adopt.',
+                    $field,
+                )),
+            };
+        }
+
+        return $this;
+    }
+
+    /**
+     * Apply a `tax_input`-shaped map through the per-taxonomy {@see terms()} setter.
+     *
+     * @param array<string, array<int, string|int|TermRef|LazyRef>> $taxInput
+     * @return void
+     */
+    private function fillTaxonomies(array $taxInput): void
+    {
+        foreach ($taxInput as $taxonomy => $terms) {
+            $this->terms((string) $taxonomy, (array) $terms);
+        }
+    }
+
+    /**
      * @return PostRef
      *
      * Managed identity is `Muster class + logical key`; the WordPress locator is
@@ -224,7 +296,13 @@ final class PostBuilder implements PersistableDeclaration
     public function save(): PostRef
     {
         $slug = $this->resolveSlug();
-        $this->assertMetaNotAcf($slug);
+        $this->assertMetaKeysNotAcfFields(
+            $this->context,
+            (array) ($this->payload['meta_input'] ?? []),
+            'post',
+            $this->postType,
+            $this->postType . ':' . $slug,
+        );
         $intent = $this->ownershipIntent();
 
         if (!function_exists('get_posts')) {
@@ -386,48 +464,6 @@ final class PostBuilder implements PersistableDeclaration
         }
 
         return (int) $saveResult;
-    }
-
-    /**
-     * Reject a raw `meta()` write that would silently clobber an ACF field.
-     *
-     * ACF stores each field's value under its field name as a post meta key and
-     * a `field_…` reference alongside it; `update_post_meta()` writes only the
-     * former, so `get_field()` reads the value back unformatted or empty. When
-     * acf-json declares the key as an ACF field for this post type, that raw
-     * write is (almost always) a mistake — fail loudly here rather than let the
-     * data land where ACF can't see it. Keys the theme does not register as ACF
-     * fields pass through untouched, so genuine raw meta is unaffected, and with
-     * no acf-json present the check is inert. Runs during planning too, so the
-     * conflict blocks application (ADR 0002).
-     *
-     * @param string $slug The resolved WordPress locator, for the error message.
-     * @return void
-     * @throws LogicException If any `meta()` key names an ACF field for this type.
-     */
-    private function assertMetaNotAcf(string $slug): void
-    {
-        $meta = (array) ($this->payload['meta_input'] ?? []);
-
-        if ($meta === []) {
-            return;
-        }
-
-        $collisions = array_intersect(
-            array_keys($meta),
-            $this->context->acfFieldNames($this->postType),
-        );
-
-        if ($collisions !== []) {
-            throw new LogicException(sprintf(
-                'meta() key(s) [%s] on post [%s:%s] name ACF field(s) declared in the theme\'s '
-                . 'acf-json. Write them with acf([...]) so update_field() stores the field-key '
-                . 'reference get_field() needs; update_post_meta() would leave the value unreadable by ACF.',
-                implode(', ', $collisions),
-                $this->postType,
-                $slug,
-            ));
-        }
     }
 
     /**
